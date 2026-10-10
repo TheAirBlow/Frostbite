@@ -21,6 +21,7 @@ jobs:
           - { name: agent-singbox, file: Dockerfile.agent, target: singbox, context: . }
           - { name: agent-edge, file: Dockerfile.agent, target: edge, context: . }
           - { name: agent-mtproto, file: Dockerfile.agent, target: mtproto, context: . }
+          - { name: agent-turnable, file: Dockerfile.agent, target: turnable, context: . }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

@@ -136,6 +136,7 @@ export interface Reality {
   public_key?: string
   short_ids: string[]
   spider_x?: string
+  xver?: number
 }
 
 export interface Security {

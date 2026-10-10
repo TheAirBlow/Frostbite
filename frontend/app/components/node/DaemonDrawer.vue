@@ -40,7 +40,7 @@
         <dt class="text-base-content/50">{{ $t('Host') }}</dt><dd>{{ daemon.host_info.hostname || '—' }} <span class="text-base-content/50">{{ daemon.host_info.os }}/{{ daemon.host_info.arch }}</span></dd>
         <dt class="text-base-content/50">{{ $t('Revision') }}</dt><dd>{{ daemon.applied_rev }} applied · {{ daemon.desired_rev }} wanted</dd>
         <dt class="text-base-content/50">{{ $t('Last seen') }}</dt><dd>{{ daemon.live.online ? 'now' : formatRelative(daemon.last_seen) }}</dd>
-        <dt class="text-base-content/50">{{ $t('User changes') }}</dt><dd>{{ hot ? (daemon.kind === 'singbox' ? 'live for most protocols' : 'applied live') : 'restart the core' }}</dd>
+        <dt class="text-base-content/50">{{ $t('User changes') }}</dt><dd>{{ hot ? $t('Applied live') : $t('Needs a restart') }}</dd>
       </dl>
     </Section>
 

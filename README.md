@@ -3,7 +3,7 @@
 A VPN management panel built around the idea that servers and the panel should not care about each other.
 
 - **Panel** (Go + Postgres) holds users, nodes, inbounds, routing and subscriptions, and serves the web UI.
-- **Daemons** are one small binary per core (`agent-xray`, `agent-singbox`). They dial the panel, get their config pushed, and report usage back. A node can run any mix of them.
+- **Daemons** are one small binary per core (`agent-xray`, `agent-singbox`, `agent-mtproto`, `agent-turnable`). They dial the panel, get their config pushed, and report usage back. A node can run any mix of them.
 - **Bridges** are first class. A *relay* forwards raw traffic to one of your inbounds. A *chain* is a full server whose traffic leaves through another of your servers, or any proxy from a share link.
 - **Frontend** is a server rendered Nuxt app (Tailwind + daisyUI) in its own container. It is the only thing that is published: it proxies `/api`, `/sub`, `/node` and the daemon websocket to the panel, which has no published port.
 - **Monitoring** is optional: the panel exposes Prometheus metrics and ships a Grafana dashboard.
@@ -45,7 +45,7 @@ The dashboard is generated: edit `docker/grafana/build_dashboard.py` and run it 
 
 ## What it does
 
-- **Cores:** Xray and sing-box daemons, an **mtproto** daemon (Telegram proxy with a secret per user, fake TLS disguise), plus an **edge** daemon that shares one public port between them by TLS server name and sends everything else to a decoy.
+- **Cores:** Xray and sing-box daemons, an **mtproto** daemon (Telegram proxy with a secret per user, fake TLS disguise), a **turnable** daemon that hides tunnels in a public VK call, plus an **edge** daemon that shares one public port between them by TLS server name and sends everything else to a decoy.
 - **Protocols:** VLESS (Reality, XHTTP, WS, gRPC, HTTPUpgrade), VMess, Trojan, Shadowsocks 2022, Hysteria2, TUIC, AnyTLS, Naive, SOCKS/HTTP and WireGuard.
 - **Bridges:** relays and chains, with a map of how your servers connect.
 - **Certificates:** daemons get and renew Let's Encrypt certificates themselves, and show a self signed stand-in until the real one lands.
@@ -58,7 +58,7 @@ The dashboard is generated: edit `docker/grafana/build_dashboard.py` and run it 
 ## Layout
 
 ```
-cmd/panel, cmd/agent-xray, cmd/agent-singbox
+cmd/panel, cmd/agent-xray, cmd/agent-singbox, cmd/agent-mtproto, cmd/agent-turnable
 internal/spec      the core-agnostic description of what a daemon runs
 internal/core      renderers: spec -> native xray / sing-box config, behind a registry
 internal/compose   database state -> one spec per daemon (squads, bridges, system users)
@@ -98,6 +98,20 @@ The panel image is the API only and `frontend/Dockerfile` builds the web interfa
 A single binary with the UI embedded is still possible: `bun run generate` in `frontend/`, copy `.output/public` into `internal/frontend/dist` and `go build -tags frontend ./cmd/panel` (the static build needs `ssr: false` and no server routes).
 
 Configuration is `FROSTBITE_*` environment variables (or `data/config.json`), see `internal/common/config.go`.
+
+## Turnable
+
+The Turnable over VK recipe makes one [Turnable](https://github.com/TheAirBlow/Turnable) server per inbound. It needs the code at the end of a public `vk.com/call/join/` link and a destination, which is the ip:port of whatever the tunnel leads to. A WireGuard inbound on the same node, `127.0.0.1:51820` over udp, is a good start. The panel generates the key pair.
+
+Every user gets a Turnable identity of their own and a `turnable://` link that Turnable's client imports. The tunnel only reaches the destination, so users still need a client for what sits behind it, WireGuard for example, pointed at the local port Turnable's client opens. Users are added and removed on the running server, and traffic is counted per user.
+
+Only relay mode on VK exists in Turnable so far. It tries to solve VK's captcha by itself. If that fails, the daemon log shows a link to a manual page on port 1984 of the node. It listens on localhost, so open it through an SSH tunnel.
+
+## Sharing a name with a real site
+
+REALITY can use your own site as its target. Move nginx's HTTPS listener off 443, say to `127.0.0.1:8443`, and keep port 80 where it is so certbot keeps working. Then make a VLESS REALITY inbound on 443 with `127.0.0.1:8443` as the handshake target and your site's name as the server name. Clients with a key get the VPN. Everyone else is passed through to nginx and sees the real site and its real certificate.
+
+Set the PROXY header option on the inbound to version 2 if nginx should see real visitor addresses. Nginx then needs `listen 127.0.0.1:8443 ssl proxy_protocol;`, `set_real_ip_from 127.0.0.1;` and `real_ip_header proxy_protocol;`. This works on Xray only. sing-box cannot send the header.
 
 ## Things to know
 

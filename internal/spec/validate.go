@@ -73,6 +73,9 @@ func (in Inbound) validateSecurity() error {
 		if _, _, err := net.SplitHostPort(r.Dest); err != nil {
 			return fmt.Errorf("reality target must look like host:port")
 		}
+		if r.XVer < 0 || r.XVer > 2 {
+			return fmt.Errorf("the PROXY header version must be 0, 1 or 2")
+		}
 	case SecurityTLS:
 		if a := in.Security.ACME; a != nil {
 			if a.Domain == "" || net.ParseIP(a.Domain) != nil {
@@ -100,6 +103,13 @@ func (in Inbound) validateSecurity() error {
 		default:
 			return fmt.Errorf("unknown mtproto disguise %q", in.Options.MTMode)
 		}
+	case ProtoTurnable:
+		if in.Security.Type != "" && in.Security.Type != SecurityNone {
+			return fmt.Errorf("turnable brings its own encryption, leave security off")
+		}
+		if err := in.Options.validateTurnable(); err != nil {
+			return fmt.Errorf("turnable: %w", err)
+		}
 	case ProtoWireGuard:
 		if in.Options.WGPrivate == "" {
 			return fmt.Errorf("wireguard needs a server key")
@@ -114,7 +124,7 @@ func (in Inbound) validateSecurity() error {
 // udpOrTCP says which socket family an inbound binds, so the same port can be shared across both.
 func udpOrTCP(in Inbound) string {
 	switch in.Protocol {
-	case ProtoHysteria2, ProtoTUIC, ProtoWireGuard:
+	case ProtoHysteria2, ProtoTUIC, ProtoWireGuard, ProtoTurnable:
 		return "udp"
 	}
 	if in.Transport.Type == TransportKCP {

@@ -165,7 +165,7 @@ function metricsOf(n: PanelNode) {
 
 const steps = computed(() => [
   { done: (nodes.value?.length ?? 0) > 0, title: 'Add a node', text: 'The server users connect to.', action: () => side.open('node'), cta: 'Add node' },
-  { done: nodes.value?.some(n => n.daemons.some(d => d.live.online)) ?? false, title: 'Connect a daemon', text: 'Pick Xray or sing-box and run one command on the node.', action: () => navigateTo('/nodes'), cta: 'Open nodes' },
+  { done: nodes.value?.some(n => n.daemons.some(d => d.live.online)) ?? false, title: 'Connect a daemon', text: 'Pick a core and run one command on the node.', action: () => navigateTo('/nodes'), cta: 'Open nodes' },
   { done: (inbounds.value?.length ?? 0) > 0, title: 'Create an inbound', text: 'A protocol your users connect with, like VLESS Reality.', action: () => navigateTo('/inbounds'), cta: 'Open inbounds' },
   { done: (squads.value?.some(s => s.inbound_ids.length) ?? false), title: 'Make a squad', text: 'Squads decide which inbounds a user can use.', action: () => navigateTo('/access'), cta: 'Open squads' },
   { done: (data.value?.users.total ?? 0) > 0, title: 'Add your first user', text: 'They get a subscription link that works in every client.', action: () => drawer.open('user-create'), cta: 'New user' },

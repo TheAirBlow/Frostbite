@@ -33,8 +33,9 @@ const enrollment = ref<Enrollment | null>(null)
 
 const blurb: Record<string, string> = {
   xray: 'The reference VLESS/REALITY core. Adds and removes users without dropping connections.',
-  singbox: 'Broadest protocol range: Hysteria2, TUIC, AnyTLS, Naive and more. Users change live for the common protocols; WireGuard, VMess and a few others restart it.',
+  singbox: 'Widest protocol range: Hysteria2, TUIC, AnyTLS, Naive, WireGuard and more. Users change live.',
   mtproto: 'A Telegram-only proxy. Each user gets their own secret, so usage and limits work per person. Pretends to be a visit to a real site.',
+  turnable: 'Hides a tunnel in a public VK call and leads it to one destination on this node, like a WireGuard inbound. Users change live.',
   edge: 'Shares port 443 between the other daemons on this node by reading the TLS server name. Optional decoy for everything else.',
 }
 

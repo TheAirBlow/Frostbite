@@ -3,6 +3,7 @@ package keys
 
 import (
 	"crypto/ecdh"
+	"crypto/mlkem"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -88,6 +89,21 @@ func SS2022(method string) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(b), nil
+}
+
+// TurnablePair is an ML-KEM-768 key pair, both halves base64 encoded the way Turnable reads them.
+type TurnablePair struct{ Private, Public string }
+
+// Turnable generates the key pair of a Turnable server.
+func Turnable() (TurnablePair, error) {
+	dk, err := mlkem.GenerateKey768()
+	if err != nil {
+		return TurnablePair{}, err
+	}
+	return TurnablePair{
+		Private: base64.StdEncoding.EncodeToString(dk.Bytes()),
+		Public:  base64.StdEncoding.EncodeToString(dk.EncapsulationKey().Bytes()),
+	}, nil
 }
 
 // WireGuardPublic derives the public key from a WireGuard private key.

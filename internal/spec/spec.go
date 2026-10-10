@@ -20,6 +20,7 @@ const (
 	ProtoForward     = "forward"
 	ProtoWireGuard   = "wireguard"
 	ProtoMTProto     = "mtproto"
+	ProtoTurnable    = "turnable"
 )
 
 // Transport types.
@@ -168,6 +169,7 @@ type Reality struct {
 	PublicKey   string   `json:"public_key,omitempty"`
 	ShortIDs    []string `json:"short_ids" ui:"label=Short IDs"`
 	SpiderX     string   `json:"spider_x,omitempty" ui:"label=Spider X,advanced"`
+	XVer        int      `json:"xver,omitempty"` // send a PROXY protocol header of this version to the target, 0 for none
 }
 
 // Options are protocol specific knobs, each one only used by the protocols that know it.
@@ -194,6 +196,16 @@ type Options struct {
 	WGDNS       string `json:"wg_dns,omitempty" ui:"label=DNS for clients,show=protocol:wireguard,advanced"`
 	MTMode      string `json:"mt_mode,omitempty" ui:"label=Disguise,options=faketls|padded,show=protocol:mtproto"`
 	MTDomain    string `json:"mt_domain,omitempty" ui:"label=Cover site,hint=A real site Telegram traffic pretends to be. Unrecognised visitors are sent there.,show=protocol:mtproto"`
+	TPlatform   string `json:"t_platform,omitempty" ui:"label=Platform,options=vk.com,show=protocol:turnable"`
+	TCallID     string `json:"t_call_id,omitempty" ui:"label=Call ID,hint=The code at the end of a vk.com/call/join/ link,show=protocol:turnable"`
+	TProto      string `json:"t_proto,omitempty" ui:"label=Tunnel protocol,options=dtls|srtp|none,show=protocol:turnable,advanced"`
+	TTarget     string `json:"t_target,omitempty" ui:"label=Destination,hint=Where the tunnel leads, as ip:port. Usually an inbound on this node.,show=protocol:turnable"`
+	TSocket     string `json:"t_socket,omitempty" ui:"label=Network,options=tcp|udp,show=protocol:turnable"`
+	TTransport  string `json:"t_transport,omitempty" ui:"label=Transport,options=mpath|kcp|sctp|none,show=protocol:turnable,advanced"`
+	TEncryption string `json:"t_encryption,omitempty" ui:"label=Encryption,options=handshake|full,show=protocol:turnable,advanced"`
+	TPeers      int    `json:"t_peers,omitempty" ui:"label=Connections per user,show=protocol:turnable,advanced"`
+	TPrivate    string `json:"t_private,omitempty" ui:"label=Server private key,show=protocol:turnable,advanced"`
+	TPublic     string `json:"t_public,omitempty" ui:"label=Server public key,show=protocol:turnable,advanced"`
 	WGAddress   string `json:"wg_address,omitempty"` // a user's own tunnel address, filled in for client profiles
 	Auth        bool   `json:"auth,omitempty" ui:"label=Require auth,show=protocol:socks|http|mixed"`
 	UDP         bool   `json:"udp,omitempty" ui:"label=Allow UDP,show=protocol:socks|mixed,advanced"`

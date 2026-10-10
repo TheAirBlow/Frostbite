@@ -68,6 +68,8 @@ func Link(u spec.Upstream) (string, error) {
 		}
 		q := url.Values{"server": {u.Address}, "port": {strconv.Itoa(u.Port)}, "secret": {secret}}
 		return "tg://proxy?" + q.Encode(), nil
+	case spec.ProtoTurnable:
+		return turnableLink(u)
 	case spec.ProtoWireGuard:
 		q := url.Values{}
 		q.Set("publickey", u.Options.WGPublic)

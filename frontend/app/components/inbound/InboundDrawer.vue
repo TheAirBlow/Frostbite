@@ -50,8 +50,8 @@
         <template v-if="form.protocol !== 'forward'">
           <SchemaForm v-model="transportModel" :fields="transportFields" :context="{ protocol: form.protocol }" />
           <p v-if="!transportFields.length" class="text-base-content/50 text-sm">{{ $t('This protocol has its own transport.') }}</p>
-          <div v-if="form.protocol !== 'mtproto'" class="divider my-0">{{ $t('Security') }}</div>
-          <SchemaForm v-if="form.protocol !== 'mtproto'" v-model="securityModel" :fields="securityFields" :context="{ protocol: form.protocol }" />
+          <div v-if="!['mtproto', 'turnable'].includes(form.protocol)" class="divider my-0">{{ $t('Security') }}</div>
+          <SchemaForm v-if="!['mtproto', 'turnable'].includes(form.protocol)" v-model="securityModel" :fields="securityFields" :context="{ protocol: form.protocol }" />
 
           <section v-if="form.security.type === 'tls'" class="surface flex flex-col gap-3 p-4">
             <ToggleRow :model-value="!!form.security.acme" label="Get the certificate automatically" hint="The daemon requests and renews a free Let's Encrypt certificate for the domain. The domain must point at this node and port 80 must be free there." @update:model-value="setAcme" />
@@ -87,6 +87,14 @@
               <FormField label="Private key"><input v-model="reality.private_key" class="input w-full font-mono text-xs" type="password" autocomplete="off"></FormField>
             </div>
             <ConfirmButton type="button" class="btn btn-sm self-start" confirm-label="Clients must update their link" @confirmed="newKeys"><Icon name="fa6-solid:key" size="12" /> {{ $t('Generate new key pair') }}</ConfirmButton>
+            <FormField label="PROXY header to the target" hint="Lets the target see the real client address. The target has to expect it. For nginx that means proxy_protocol on its listener.">
+              <select class="select w-full" :value="reality.xver ?? 0" @change="reality.xver = Number(($event.target as HTMLSelectElement).value)">
+                <option :value="0">{{ $t('Off') }}</option>
+                <option :value="1">{{ $t('Version 1') }}</option>
+                <option :value="2">{{ $t('Version 2') }}</option>
+              </select>
+              <p v-if="reality.xver && daemon?.kind === 'singbox'" class="text-warning mt-1 text-xs">{{ $t('sing-box cannot send a PROXY header, so this does nothing there.') }}</p>
+            </FormField>
             <FormField v-if="prefs.advanced" label="Spider X"><input v-model="reality.spider_x" class="input w-full font-mono" placeholder="/"></FormField>
           </section>
         </template>
@@ -101,7 +109,7 @@
           <button type="button" class="btn btn-sm self-start" @click="newSsKey"><Icon name="fa6-solid:key" size="12" /> {{ $t('New server key') }}</button>
         </template>
 
-        <template v-if="!['forward', 'mtproto'].includes(form.protocol)">
+        <template v-if="!['forward', 'mtproto', 'turnable'].includes(form.protocol)">
           <div class="divider my-0">{{ $t('Sniffing') }}</div>
           <SchemaForm v-model="sniffingModel" :fields="schema?.sniffing ?? []" />
 
@@ -252,7 +260,7 @@ function limited(fields: SchemaField[] | undefined, allowed: string[] | undefine
   return (fields ?? []).map(f => (f.path === 'type' && f.options && allowed ? { ...f, options: f.options.filter(o => allowed.includes(o)) } : f))
 }
 
-const transportFields = computed(() => (['hysteria2', 'tuic', 'anytls', 'naive', 'shadowsocks', 'socks', 'http', 'mixed', 'mtproto'].includes(form.value?.protocol ?? '')
+const transportFields = computed(() => (['hysteria2', 'tuic', 'anytls', 'naive', 'shadowsocks', 'socks', 'http', 'mixed', 'mtproto', 'turnable'].includes(form.value?.protocol ?? '')
   ? []
   : limited(schema.value?.transport, caps.value?.transports)))
 const securityFields = computed(() => {

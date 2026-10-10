@@ -186,7 +186,7 @@ func streamSettings(t spec.Transport, s spec.Security, server bool) map[string]a
 		}
 		if server {
 			ss["realitySettings"] = map[string]any{
-				"show": false, "dest": r.Dest, "xver": 0, "serverNames": r.ServerNames,
+				"show": false, "dest": r.Dest, "xver": r.XVer, "serverNames": r.ServerNames,
 				"privateKey": r.PrivateKey, "shortIds": append([]string{""}, r.ShortIDs...),
 			}
 		} else {

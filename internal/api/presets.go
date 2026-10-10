@@ -92,6 +92,30 @@ var presets = []preset{
 		},
 	},
 	{
+		ID: "turnable-vk", Label: "Turnable over VK", Group: "Other", Cores: []string{"turnable"},
+		Description: "Hides a tunnel in a public VK call. Leads to one destination, like a WireGuard inbound on this node.",
+		Params: []presetParam{
+			pPort("56000"),
+			{Key: "call", Label: "Call ID", Hint: "The code at the end of a vk.com/call/join/ link", Kind: "string"},
+			{Key: "target", Label: "Destination", Hint: "Where the tunnel leads, as ip:port", Default: "127.0.0.1:51820", Kind: "string"},
+			{Key: "socket", Label: "Network", Hint: "tcp or udp", Default: "udp", Kind: "string"},
+		},
+		build: func(p presetValues, req *inboundRequest) error {
+			pair, err := keys.Turnable()
+			if err != nil {
+				return err
+			}
+			req.Protocol, req.Port = spec.ProtoTurnable, int32(p.num("port", 56000))
+			req.Security = spec.Security{Type: spec.SecurityNone}
+			req.Options = spec.Options{
+				TPlatform: spec.TurnablePlatform, TCallID: p.str("call", ""), TTarget: p.str("target", "127.0.0.1:51820"),
+				TSocket: p.str("socket", "udp"), TProto: spec.TurnableProto, TTransport: spec.TurnableTransport,
+				TEncryption: spec.TurnableEncryption, TPeers: spec.TurnablePeers, TPrivate: pair.Private, TPublic: pair.Public,
+			}
+			return nil
+		},
+	},
+	{
 		ID: "vless-reality", Label: "VLESS + REALITY", Group: "Recommended", Cores: bothCores,
 		Description: "Looks like a visit to a real site. No domain or certificate needed.",
 		Params:      []presetParam{pPort("443"), pDest},

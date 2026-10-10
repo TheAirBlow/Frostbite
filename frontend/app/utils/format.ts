@@ -86,6 +86,7 @@ export const protocolLabels: Record<string, string> = {
   shadowsocks: 'Shadowsocks',
   hysteria2: 'Hysteria2',
   mtproto: 'MTProto',
+  turnable: 'Turnable',
   tuic: 'TUIC',
   anytls: 'AnyTLS',
   naive: 'Naive',
@@ -97,7 +98,7 @@ export const protocolLabels: Record<string, string> = {
   wireguard: 'WireGuard',
 }
 
-export const coreLabels: Record<string, string> = { xray: 'Xray', singbox: 'sing-box', edge: 'Edge', mtproto: 'MTProto' }
+export const coreLabels: Record<string, string> = { xray: 'Xray', singbox: 'sing-box', edge: 'Edge', mtproto: 'MTProto', turnable: 'Turnable' }
 
 export const resetLabels: Record<string, string> = {
   none: 'Never',

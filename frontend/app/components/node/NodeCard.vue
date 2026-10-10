@@ -47,7 +47,7 @@
         </div>
 
         <p v-for="c in (d.live.certs ?? []).filter(x => !x.ok)" :key="c.domain" class="text-warning bg-warning/10 mt-2 rounded-lg px-2.5 py-1.5 text-xs">
-          <Icon name="fa6-solid:certificate" size="11" /> {{ c.domain }}: {{ c.placeholder ? 'waiting for a real certificate' : 'certificate problem' }}<template v-if="c.error"> — {{ c.error }}</template>
+          <Icon name="fa6-solid:certificate" size="11" /> {{ c.domain }}: {{ c.placeholder ? 'waiting for a real certificate' : 'certificate problem' }}<template v-if="c.error">: {{ c.error }}</template>
         </p>
         <p v-if="d.last_error" class="text-error bg-error/10 mt-2 rounded-lg px-2.5 py-1.5 font-mono text-xs break-words">{{ d.last_error }}</p>
 

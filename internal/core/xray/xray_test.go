@@ -83,3 +83,20 @@ func TestRawPatch(t *testing.T) {
 		t.Fatalf("patch not applied: %v", in)
 	}
 }
+
+func TestRealityXverReachesTheConfig(t *testing.T) {
+	for _, ver := range []int{0, 1, 2} {
+		d := sample()
+		d.Inbounds[0].Security.Reality.XVer = ver
+		raw, err := Render(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cfg map[string]any
+		_ = json.Unmarshal(raw, &cfg)
+		rs := cfg["inbounds"].([]any)[1].(map[string]any)["streamSettings"].(map[string]any)["realitySettings"].(map[string]any)
+		if rs["xver"] != float64(ver) {
+			t.Fatalf("xver %d rendered as %v", ver, rs["xver"])
+		}
+	}
+}

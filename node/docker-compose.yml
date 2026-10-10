@@ -56,3 +56,14 @@ services:
       FROSTBITE_TOKEN: ${FROSTBITE_MTPROTO_TOKEN:?FROSTBITE_MTPROTO_TOKEN must be set}
     volumes:
       - ./data/mtproto:/data
+
+  # Tunnels that hide inside a call on a platform such as VK.
+  turnable:
+    <<: *agent
+    profiles: [turnable]
+    image: ${FROSTBITE_IMAGE_TURNABLE:-ghcr.io/theairblow/frostbite-agent-turnable:latest}
+    environment:
+      <<: *agent-env
+      FROSTBITE_TOKEN: ${FROSTBITE_TURNABLE_TOKEN:?FROSTBITE_TURNABLE_TOKEN must be set}
+    volumes:
+      - ./data/turnable:/data

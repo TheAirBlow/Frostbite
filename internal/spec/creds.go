@@ -42,6 +42,16 @@ func CredentialsFor(protocol, method, userUUID, password string) (id, pass strin
 		mac.Write([]byte("mtproto"))
 		return userUUID, hex.EncodeToString(mac.Sum(nil)[:16])
 	}
+	if protocol == ProtoTurnable {
+		// Turnable identifies users by a uuid that works like a password, so it must not be the one other protocols use
+		mac := hmac.New(sha256.New, []byte(password))
+		mac.Write([]byte("turnable"))
+		sum := mac.Sum(nil)
+		id, _ := uuid.FromBytes(sum[:16])
+		id[6] = id[6]&0x0f | 0x40
+		id[8] = id[8]&0x3f | 0x80
+		return id.String(), password
+	}
 	if protocol == ProtoShadowsocks && strings.HasPrefix(method, "2022-") {
 		size := 32
 		if method == "2022-blake3-aes-128-gcm" {

@@ -88,6 +88,7 @@ func Upstream(ep Endpoint, u spec.User) (spec.Upstream, error) {
 	// Server secrets must never reach a client.
 	up.Options.ServerKey = ""
 	up.Options.WGPrivate = ""
+	up.Options.TPrivate = ""
 	return up, nil
 }
 
