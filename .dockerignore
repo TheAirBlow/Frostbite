@@ -1,0 +1,7 @@
+data
+certs
+.env
+.git
+.idea
+frontend
+internal/frontend/dist

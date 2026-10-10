@@ -1,0 +1,58 @@
+# One host, any number of daemons: turn on the ones you want with profiles.
+#   docker compose --profile xray up -d
+#   docker compose --profile xray --profile singbox up -d
+# Tokens come from the panel (Nodes -> Add daemon) and go in .env next to this file.
+
+x-agent: &agent
+  restart: unless-stopped
+  network_mode: host
+  cap_add:
+    - NET_ADMIN
+  environment: &agent-env
+    FROSTBITE_PANEL_URL: ${FROSTBITE_PANEL_URL:?FROSTBITE_PANEL_URL must be set}
+    FROSTBITE_INSECURE: ${FROSTBITE_INSECURE:-false}
+
+services:
+  xray:
+    <<: *agent
+    profiles: [xray]
+    image: ${FROSTBITE_IMAGE_XRAY:-ghcr.io/theairblow/frostbite-agent-xray:latest}
+    environment:
+      <<: *agent-env
+      FROSTBITE_TOKEN: ${FROSTBITE_XRAY_TOKEN:?FROSTBITE_XRAY_TOKEN must be set}
+    volumes:
+      - ./data/xray:/data
+      - ./certs:/certs
+
+  singbox:
+    <<: *agent
+    profiles: [singbox]
+    image: ${FROSTBITE_IMAGE_SINGBOX:-ghcr.io/theairblow/frostbite-agent-singbox:latest}
+    environment:
+      <<: *agent-env
+      FROSTBITE_TOKEN: ${FROSTBITE_SINGBOX_TOKEN:?FROSTBITE_SINGBOX_TOKEN must be set}
+    volumes:
+      - ./data/singbox:/data
+      - ./certs:/certs
+
+  # Shares port 443 between the other daemons on this host by looking at the TLS server name.
+  edge:
+    <<: *agent
+    profiles: [edge]
+    image: ${FROSTBITE_IMAGE_EDGE:-ghcr.io/theairblow/frostbite-agent-edge:latest}
+    environment:
+      <<: *agent-env
+      FROSTBITE_TOKEN: ${FROSTBITE_EDGE_TOKEN:?FROSTBITE_EDGE_TOKEN must be set}
+    volumes:
+      - ./data/edge:/data
+
+  # A Telegram proxy with one secret per user.
+  mtproto:
+    <<: *agent
+    profiles: [mtproto]
+    image: ${FROSTBITE_IMAGE_MTPROTO:-ghcr.io/theairblow/frostbite-agent-mtproto:latest}
+    environment:
+      <<: *agent-env
+      FROSTBITE_TOKEN: ${FROSTBITE_MTPROTO_TOKEN:?FROSTBITE_MTPROTO_TOKEN must be set}
+    volumes:
+      - ./data/mtproto:/data

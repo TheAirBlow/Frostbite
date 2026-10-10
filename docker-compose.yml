@@ -1,0 +1,183 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: frostbite
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: frostbite
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U frostbite -d frostbite"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The panel only serves the api and is never published: everything reaches it through "web", daemons included.
+  panel:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FROSTBITE_DATABASE_URL: postgres://frostbite:${POSTGRES_PASSWORD}@postgres:5432/frostbite?sslmode=disable
+      FROSTBITE_SERVER_PUBLIC_URL: ${FROSTBITE_PUBLIC_URL:-}
+      FROSTBITE_AUTH_BOOTSTRAP_USER: ${FROSTBITE_ADMIN_USER:-admin}
+      FROSTBITE_AUTH_BOOTSTRAP_PASS: ${FROSTBITE_ADMIN_PASS:-}
+      FROSTBITE_AUTH_COOKIE_SECURE: ${FROSTBITE_COOKIE_SECURE:-false}
+      # metrics get their own port, which stays inside the compose network
+      FROSTBITE_METRICS_ADDR: 0.0.0.0:9091
+      FROSTBITE_METRICS_PER_USER: ${FROSTBITE_METRICS_PER_USER:-true}
+    expose:
+      - "8080"
+      - "9091"
+    volumes:
+      - ./data/panel:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Server rendered web interface. It proxies /api, /sub, /node and the daemon websocket to the panel.
+  # Put nginx or Caddy in front of it for TLS and have them set X-Real-IP to the client address.
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      panel:
+        condition: service_healthy
+    environment:
+      NUXT_BACKEND_URL: http://panel:8080
+    ports:
+      - "${FROSTBITE_PORT:-8080}:3000"
+
+  # Optional monitoring: docker compose --profile monitoring up -d
+  # Grafana is on http://127.0.0.1:3000 (admin / GRAFANA_PASSWORD), Prometheus on http://127.0.0.1:9090.
+  init:
+    profiles: [monitoring]
+    image: busybox:1.37
+    command: >
+      sh -c "mkdir -p /data/prometheus /data/grafana &&
+             chown -R 65534:65534 /data/prometheus &&
+             chown -R 472:0 /data/grafana"
+    volumes:
+      - ./data:/data
+    restart: "no"
+
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-1y}
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./data/prometheus:/prometheus
+
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_started
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/frostbite.json
+      GF_USERS_DEFAULT_THEME: dark
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./data/grafana:/var/lib/grafana
+
+  # health of the machine the panel runs on; nodes report theirs through their daemons
+  node-exporter:
+    profiles: [monitoring]
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    pid: host
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro,rslave
+
+  # Optional: run daemons on the same machine as the panel.
+  # Create a node in the panel, copy the tokens into .env, then:
+  #   docker compose --profile xray --profile singbox up -d
+  agent-xray:
+    profiles: [xray]
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      target: xray
+    restart: unless-stopped
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    environment:
+      FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
+      FROSTBITE_TOKEN: ${FROSTBITE_XRAY_TOKEN:?FROSTBITE_XRAY_TOKEN must be set}
+    volumes:
+      - ./data/agent-xray:/data
+      - ./certs:/certs
+
+  agent-singbox:
+    profiles: [singbox]
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      target: singbox
+    restart: unless-stopped
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    environment:
+      FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
+      FROSTBITE_TOKEN: ${FROSTBITE_SINGBOX_TOKEN:?FROSTBITE_SINGBOX_TOKEN must be set}
+    volumes:
+      - ./data/agent-singbox:/data
+      - ./certs:/certs
+
+  agent-mtproto:
+    profiles: [mtproto]
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      target: mtproto
+    restart: unless-stopped
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    environment:
+      FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
+      FROSTBITE_TOKEN: ${FROSTBITE_MTPROTO_TOKEN:?FROSTBITE_MTPROTO_TOKEN must be set}
+    volumes:
+      - ./data/agent-mtproto:/data
+
+  agent-edge:
+    profiles: [edge]
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      target: edge
+    restart: unless-stopped
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    environment:
+      FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
+      FROSTBITE_TOKEN: ${FROSTBITE_EDGE_TOKEN:?FROSTBITE_EDGE_TOKEN must be set}
+    volumes:
+      - ./data/agent-edge:/data

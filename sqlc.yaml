@@ -1,0 +1,53 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/db/queries"
+    schema: "internal/db/migrations"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_db_tags: true
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+          - db_type: "uuid"
+            go_type: "string"
+          - column: "inbounds.transport"
+            go_type: { import: "frostbite/internal/spec", type: "Transport" }
+          - column: "inbounds.security"
+            go_type: { import: "frostbite/internal/spec", type: "Security" }
+          - column: "inbounds.options"
+            go_type: { import: "frostbite/internal/spec", type: "Options" }
+          - column: "inbounds.sniffing"
+            go_type: { import: "frostbite/internal/spec", type: "Sniffing" }
+          - column: "inbounds.forward"
+            go_type: { import: "frostbite/internal/spec", type: "Forward", pointer: true }
+          - column: "outbounds.upstream"
+            go_type: { import: "frostbite/internal/spec", type: "Upstream", pointer: true }
+          - column: "hosts.mux"
+            go_type: { import: "frostbite/internal/spec", type: "Mux", pointer: true }
+          - column: "hosts.fragment"
+            go_type: { import: "frostbite/internal/spec", type: "Frag", pointer: true }
+          - column: "rules.match"
+            go_type: { import: "frostbite/internal/spec", type: "Rule" }
+          - column: "inbounds.raw_patch"
+            go_type: { import: "encoding/json", type: "RawMessage" }
+          - column: "daemons.raw_patch"
+            go_type: { import: "encoding/json", type: "RawMessage" }
+          - column: "daemons.host_info"
+            go_type: { import: "encoding/json", type: "RawMessage" }
+          - column: "audit_log.detail"
+            go_type: { import: "encoding/json", type: "RawMessage" }
+          - column: "settings.value"
+            go_type: { import: "encoding/json", type: "RawMessage" }
+          - column: "sub_templates.patch"
+            go_type: { import: "encoding/json", type: "RawMessage" }

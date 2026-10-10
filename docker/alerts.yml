@@ -1,0 +1,182 @@
+# Rules are evaluated by Prometheus and show up in Grafana under Alerting. To get them delivered, add an Alertmanager
+# and point `alerting:` in prometheus.yml at it. The panel's own Telegram and webhook alerts cover users and daemons already.
+groups:
+  - name: panel
+    rules:
+      - alert: PanelDown
+        expr: up{job="frostbite"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "The panel does not answer scrapes"
+          description: "Prometheus could not read metrics from the panel for a minute."
+
+      - alert: PanelErrors
+        expr: |
+          sum(rate(frostbite_http_requests_total{code=~"5.."}[5m])) / clamp_min(sum(rate(frostbite_http_requests_total[5m])), 0.001) > 0.05
+          and sum(increase(frostbite_http_requests_total{code=~"5.."}[5m])) >= 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of panel requests fail with a 5xx"
+
+      - alert: MetricsRefreshFailing
+        expr: increase(frostbite_collect_failures_total[10m]) > 3
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Refreshing the {{ $labels.group }} metrics fails"
+          description: "The database queries behind these metrics keep failing, so the numbers on the dashboard are stale."
+
+      - alert: LoginBruteForce
+        expr: sum(increase(frostbite_auth_logins_total{result=~"wrong_password|unknown_user"}[10m])) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} failed sign ins in 10 minutes"
+
+      - alert: BackupStale
+        expr: |
+          frostbite_backup_schedule_enabled == 1
+          and (time() - frostbite_backup_latest_timestamp_seconds) > 2 * frostbite_backup_schedule_interval_seconds
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "The newest backup is {{ $value | humanizeDuration }} old"
+
+      - alert: BackupMissing
+        expr: frostbite_backup_schedule_enabled == 1 and frostbite_backup_files == 0
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "Scheduled backups are on but no backup file exists"
+
+      - alert: DatabasePoolSaturated
+        expr: frostbite_db_pool_connections{state="acquired"} / on() frostbite_db_pool_max_connections > 0.9
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "The panel is using {{ $value | humanizePercentage }} of its database connections"
+
+      - alert: DatabaseDeadlocks
+        expr: increase(frostbite_postgres_deadlocks_total[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Postgres reported deadlocks"
+
+  - name: daemons
+    rules:
+      - alert: DaemonOffline
+        expr: frostbite_daemon_up == 0 and on(daemon_id) frostbite_daemon_enabled == 1
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.node }}: {{ $labels.daemon }} ({{ $labels.kind }}) is offline"
+
+      - alert: DaemonRejectsSpec
+        expr: frostbite_daemon_has_error == 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.node }}: {{ $labels.daemon }} could not apply its configuration"
+          description: |-
+            {{ range query (printf `frostbite_daemon_last_error_info{daemon_id="%s"}` $labels.daemon_id) }}{{ .Labels.error }}{{ end }}
+
+      - alert: DaemonOutOfSync
+        expr: frostbite_daemon_in_sync == 0 and on(daemon_id) frostbite_daemon_up == 1 and on(daemon_id) frostbite_daemon_has_error == 0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.node }}: {{ $labels.daemon }} runs an old configuration"
+
+      - alert: DaemonFlapping
+        expr: increase(frostbite_link_connections_total[30m]) > 6
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.kind }} daemons reconnected {{ $value | printf \"%.0f\" }} times in 30 minutes"
+
+      - alert: HostReportStale
+        expr: frostbite_host_sample_age_seconds > 120
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.node }}: {{ $labels.daemon }} stopped reporting its health"
+
+      - alert: HostCpuHigh
+        expr: frostbite_host_cpu_ratio > 0.9
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.node }} CPU is at {{ $value | humanizePercentage }}"
+
+      - alert: HostMemoryHigh
+        expr: frostbite_host_memory_used_bytes / frostbite_host_memory_total_bytes > 0.92
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.node }} uses {{ $value | humanizePercentage }} of its memory"
+
+      - alert: HostDiskAlmostFull
+        expr: frostbite_host_disk_used_bytes / frostbite_host_disk_total_bytes > 0.9
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.node }} disk is {{ $value | humanizePercentage }} full"
+
+      - alert: HostFileDescriptors
+        expr: frostbite_host_open_files / frostbite_host_max_open_files > 0.8
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.node }} is using {{ $value | humanizePercentage }} of its file descriptors"
+
+      - alert: CertificateExpiresSoon
+        expr: (frostbite_daemon_cert_expiry_timestamp_seconds - time()) < 7 * 86400 and frostbite_daemon_cert_placeholder == 0
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "The certificate for {{ $labels.domain }} on {{ $labels.node }} expires in {{ $value | humanizeDuration }}"
+
+      - alert: CertificateIsPlaceholder
+        expr: frostbite_daemon_cert_placeholder == 1
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.domain }} on {{ $labels.node }} still serves a self signed stand-in"
+
+  - name: traffic
+    rules:
+      - alert: NodeTrafficLimitNear
+        expr: frostbite_node_traffic_used_bytes_total / (frostbite_node_traffic_limit_bytes > 0) > 0.9
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.node }} used {{ $value | humanizePercentage }} of its traffic limit"
+
+      - alert: UsersOverLimitStillActive
+        expr: frostbite_users_over_limit - on() (frostbite_users{status="limited"}) > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} users are over their limit but not marked limited"
+
+      - alert: TrafficReportsStopped
+        expr: sum(rate(frostbite_traffic_raw_bytes_total[15m])) == 0 and sum(frostbite_online_users) > 0
+        for: 20m
+        labels: { severity: warning }
+        annotations:
+          summary: "Users are online but no traffic is being booked"
+
+      - alert: NotificationsFailing
+        expr: sum by (channel) (increase(frostbite_notify_deliveries_total{result="error"}[1h])) > 3
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} {{ $labels.channel }} deliveries failed in the last hour"
+
+  - name: host
+    rules:
+      - alert: PanelHostDiskAlmostFull
+        expr: node_filesystem_avail_bytes{mountpoint="/", fstype!="rootfs"} / node_filesystem_size_bytes{mountpoint="/", fstype!="rootfs"} < 0.1
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "The panel host has {{ $value | humanizePercentage }} of its disk left"
