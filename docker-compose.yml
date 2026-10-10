@@ -131,7 +131,7 @@ services:
     cap_add: [NET_ADMIN]
     environment:
       FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
-      FROSTBITE_TOKEN: ${FROSTBITE_XRAY_TOKEN:?FROSTBITE_XRAY_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_XRAY_TOKEN:-}
     volumes:
       - ./data/agent-xray:/data
       - ./certs:/certs
@@ -147,7 +147,7 @@ services:
     cap_add: [NET_ADMIN]
     environment:
       FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
-      FROSTBITE_TOKEN: ${FROSTBITE_SINGBOX_TOKEN:?FROSTBITE_SINGBOX_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_SINGBOX_TOKEN:-}
     volumes:
       - ./data/agent-singbox:/data
       - ./certs:/certs
@@ -163,7 +163,7 @@ services:
     cap_add: [NET_ADMIN]
     environment:
       FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
-      FROSTBITE_TOKEN: ${FROSTBITE_MTPROTO_TOKEN:?FROSTBITE_MTPROTO_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_MTPROTO_TOKEN:-}
     volumes:
       - ./data/agent-mtproto:/data
 
@@ -178,7 +178,7 @@ services:
     cap_add: [NET_ADMIN]
     environment:
       FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
-      FROSTBITE_TOKEN: ${FROSTBITE_TURNABLE_TOKEN:?FROSTBITE_TURNABLE_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_TURNABLE_TOKEN:-}
     volumes:
       - ./data/agent-turnable:/data
 
@@ -193,6 +193,6 @@ services:
     cap_add: [NET_ADMIN]
     environment:
       FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
-      FROSTBITE_TOKEN: ${FROSTBITE_EDGE_TOKEN:?FROSTBITE_EDGE_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_EDGE_TOKEN:-}
     volumes:
       - ./data/agent-edge:/data

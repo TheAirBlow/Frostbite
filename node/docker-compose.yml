@@ -19,7 +19,7 @@ services:
     image: ${FROSTBITE_IMAGE_XRAY:-ghcr.io/theairblow/frostbite-agent-xray:latest}
     environment:
       <<: *agent-env
-      FROSTBITE_TOKEN: ${FROSTBITE_XRAY_TOKEN:?FROSTBITE_XRAY_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_XRAY_TOKEN:-}
     volumes:
       - ./data/xray:/data
       - ./certs:/certs
@@ -30,7 +30,7 @@ services:
     image: ${FROSTBITE_IMAGE_SINGBOX:-ghcr.io/theairblow/frostbite-agent-singbox:latest}
     environment:
       <<: *agent-env
-      FROSTBITE_TOKEN: ${FROSTBITE_SINGBOX_TOKEN:?FROSTBITE_SINGBOX_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_SINGBOX_TOKEN:-}
     volumes:
       - ./data/singbox:/data
       - ./certs:/certs
@@ -42,7 +42,7 @@ services:
     image: ${FROSTBITE_IMAGE_EDGE:-ghcr.io/theairblow/frostbite-agent-edge:latest}
     environment:
       <<: *agent-env
-      FROSTBITE_TOKEN: ${FROSTBITE_EDGE_TOKEN:?FROSTBITE_EDGE_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_EDGE_TOKEN:-}
     volumes:
       - ./data/edge:/data
 
@@ -53,7 +53,7 @@ services:
     image: ${FROSTBITE_IMAGE_MTPROTO:-ghcr.io/theairblow/frostbite-agent-mtproto:latest}
     environment:
       <<: *agent-env
-      FROSTBITE_TOKEN: ${FROSTBITE_MTPROTO_TOKEN:?FROSTBITE_MTPROTO_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_MTPROTO_TOKEN:-}
     volumes:
       - ./data/mtproto:/data
 
@@ -64,6 +64,6 @@ services:
     image: ${FROSTBITE_IMAGE_TURNABLE:-ghcr.io/theairblow/frostbite-agent-turnable:latest}
     environment:
       <<: *agent-env
-      FROSTBITE_TOKEN: ${FROSTBITE_TURNABLE_TOKEN:?FROSTBITE_TURNABLE_TOKEN must be set}
+      FROSTBITE_TOKEN: ${FROSTBITE_TURNABLE_TOKEN:-}
     volumes:
       - ./data/turnable:/data
