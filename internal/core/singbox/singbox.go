@@ -27,7 +27,7 @@ func init() {
 			Transports: []string{spec.TransportTCP, spec.TransportWS, spec.TransportGRPC, spec.TransportHTTPUpgrade},
 			Securities: []string{spec.SecurityNone, spec.SecurityTLS, spec.SecurityReality},
 			Outbounds:  []string{spec.OutDirect, spec.OutBlock, spec.OutProxy, spec.OutWarp},
-			HotUsers:   true, // VLESS, Trojan, Hysteria2, TUIC and Shadowsocks; the rest restart
+			HotUsers:   true, // every protocol here changes users without a restart
 		},
 		Render: Render,
 	})

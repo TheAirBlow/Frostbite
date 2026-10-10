@@ -107,7 +107,7 @@ Configuration is `FROSTBITE_*` environment variables (or `data/config.json`), se
 - I could not run Docker here, so the Dockerfiles and compose files were written but not built. Everything else was run for real, including the panel, the proxy (HTTP and the daemon websocket), Prometheus and Grafana as plain processes.
 - Daemons now reach the panel through the web service, so `FROSTBITE_PANEL_URL` must point at the web address.
 
-- Xray picks up user changes live. sing-box does too for VLESS, Trojan, Hysteria2, TUIC and Shadowsocks (it reaches into sing-box internals, pinned to one version, and falls back to a restart if anything looks different). WireGuard, VMess, AnyTLS and Naive still restart it. A user who loses access has their open connections on sing-box cut.
+- Xray picks up user changes live. sing-box does too for every protocol the panel offers (it reaches into sing-box internals, pinned to one version, and falls back to a restart if anything looks different). A user being added to VMess can fail one handshake at the exact moment of the swap; the client retries. A user who loses access has their open connections on sing-box cut.
 - Xray 26 removed `allowInsecure`. Nodes with self signed certificates work for sing-box clients only, so use real certificates for Xray TLS inbounds.
 - Without a certificate at the configured path the daemon creates a self signed one so it can start.
 

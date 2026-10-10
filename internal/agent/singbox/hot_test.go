@@ -112,6 +112,7 @@ func daemonWith(protocol string, port int, sec spec.Security, users ...spec.User
 		Inbounds: []spec.Inbound{{
 			Tag: "v", Protocol: protocol, Listen: "127.0.0.1", Port: port,
 			Transport: spec.Transport{Type: spec.TransportTCP}, Security: sec, Users: users,
+			Options: spec.Options{Auth: true},
 		}},
 		Outbounds: []spec.Outbound{{Tag: "direct", Kind: spec.OutDirect}},
 		Final:     "direct",
@@ -139,6 +140,40 @@ var plainCases = []hotCase{
 			return spec.User{ID: n, Name: fmt.Sprintf("u%d", n), Password: uuid.NewString()}
 		},
 		outbound: func(u spec.User) map[string]any { return map[string]any{"type": "trojan", "password": u.Password} },
+	},
+	{
+		protocol: spec.ProtoVMess, security: spec.Security{Type: spec.SecurityNone},
+		user: func(n int64) spec.User { return spec.User{ID: n, Name: fmt.Sprintf("u%d", n), UUID: uuid.NewString()} },
+		outbound: func(u spec.User) map[string]any {
+			return map[string]any{"type": "vmess", "uuid": u.UUID, "security": "auto"}
+		},
+	},
+	{
+		protocol: spec.ProtoSOCKS, security: spec.Security{Type: spec.SecurityNone},
+		user: func(n int64) spec.User {
+			return spec.User{ID: n, Name: fmt.Sprintf("u%d", n), Password: uuid.NewString()}
+		},
+		outbound: func(u spec.User) map[string]any {
+			return map[string]any{"type": "socks", "username": u.Name, "password": u.Password}
+		},
+	},
+	{
+		protocol: spec.ProtoMixed, security: spec.Security{Type: spec.SecurityNone},
+		user: func(n int64) spec.User {
+			return spec.User{ID: n, Name: fmt.Sprintf("u%d", n), Password: uuid.NewString()}
+		},
+		outbound: func(u spec.User) map[string]any {
+			return map[string]any{"type": "socks", "username": u.Name, "password": u.Password}
+		},
+	},
+	{
+		protocol: spec.ProtoHTTP, security: spec.Security{Type: spec.SecurityNone},
+		user: func(n int64) spec.User {
+			return spec.User{ID: n, Name: fmt.Sprintf("u%d", n), Password: uuid.NewString()}
+		},
+		outbound: func(u spec.User) map[string]any {
+			return map[string]any{"type": "http", "username": u.Name, "password": u.Password}
+		},
 	},
 }
 
@@ -216,35 +251,4 @@ func runHotCase(t *testing.T, c hotCase) {
 	if _, err := io.ReadFull(long, buf); err == nil {
 		t.Fatal("the removed user's open connection should have been cut")
 	}
-}
-
-func TestVMessStillRestartsToChangeUsers(t *testing.T) {
-	target := echo(t)
-	port := freePort(t)
-	mk := func(n int64) spec.User { return spec.User{ID: n, Name: fmt.Sprintf("u%d", n), UUID: uuid.NewString()} }
-	u1, u2 := mk(1), mk(2)
-
-	r := New(t.TempDir())
-	t.Cleanup(func() { r.Close() })
-	apply := func(d spec.Daemon) {
-		rendered, err := core.Get("singbox").Render(d)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := r.Apply(context.Background(), d, rendered); err != nil {
-			t.Fatal(err)
-		}
-	}
-	sec := spec.Security{Type: spec.SecurityNone}
-	apply(daemonWith(spec.ProtoVMess, port, sec, u1))
-	box := r.instance
-	apply(daemonWith(spec.ProtoVMess, port, sec, u1, u2))
-	if r.instance == box {
-		t.Fatal("vmess is expected to restart, the hot path must leave it alone")
-	}
-	conn, err := roundTrip(client(t, port, map[string]any{"type": "vmess", "uuid": u2.UUID, "security": "auto"}), target)
-	if err != nil {
-		t.Fatalf("the new user should connect after the restart: %v", err)
-	}
-	conn.Close()
 }

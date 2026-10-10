@@ -49,7 +49,7 @@ func (r *Runtime) CoreVersion() string { return "sing-box " + C.Version }
 // logPath is where sing-box writes its log.
 func (r *Runtime) logPath() string { return filepath.Join(r.dataDir, "sing-box.log") }
 
-// Apply starts a fresh instance for d. sing-box has no way to swap users in place, so any change restarts it.
+// Apply makes d the running config. A change that only touches users is applied live (see hot.go); anything else starts a fresh instance.
 func (r *Runtime) Apply(ctx context.Context, d spec.Daemon, rendered []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -113,7 +113,7 @@ func (r *Runtime) build(rendered []byte, d spec.Daemon) (*box.Box, map[string]*s
 		cancel()
 		return nil, nil, nil, fmt.Errorf("sing-box rejected the config: %w", err)
 	}
-	slots := padUsers(&opts, d)
+	slots := layoutOf(&opts, d)
 	if opts.Log == nil {
 		opts.Log = &option.LogOptions{}
 	}
