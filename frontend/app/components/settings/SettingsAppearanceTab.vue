@@ -21,7 +21,7 @@
 
     <Section :title="$t('Interface')">
       <FormField label="Language"><LanguageSwitcher align="dropdown-start" /></FormField>
-      <ToggleRow v-model="prefs.advanced" label="Advanced mode" hint="Shows every knob: raw patches, listen addresses, sort orders, fragment settings and more. Off hides them to keep forms short." />
+      <ToggleRow v-model="prefs.advanced" label="Advanced mode" hint="Opens every Advanced section by default: raw patches, listen addresses, sort orders, fragment settings and more. Off keeps them folded, but they are always one click away." />
       <FormField label="Users per page"><select v-model.number="prefs.usersPageSize" class="select w-32"><option v-for="n in [25, 50, 100, 200]" :key="n" :value="n">{{ n }}</option></select></FormField>
     </Section>
 

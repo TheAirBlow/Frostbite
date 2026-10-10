@@ -37,14 +37,15 @@
         </Section>
 
         <Section :title="$t('Quick switches')" hint="Applied to every daemon, before your own rules.">
-          <div v-if="routing" class="flex flex-col">
+          <form v-if="routing" class="flex flex-col" novalidate @submit.prevent="saveSwitches()">
             <ToggleRow v-model="routing.block_ads" label="Block ads and trackers" hint="Uses the geosite category-ads-all list." />
             <ToggleRow v-model="routing.block_bittorrent" label="Block BitTorrent" hint="Needs sniffing on the inbound, which the presets turn on." />
             <ToggleRow v-model="routing.block_private" label="Block private networks" hint="Stops users from reaching the node's LAN and metadata services." />
             <ToggleRow v-model="routing.block_quic" label="Block QUIC (UDP 443)" hint="Browsers fall back to TCP, which proxies handle better." />
-            <FormField label="Always direct" hint="These domains skip the proxy chain on the node."><ChipInput v-model="routing.direct_domains" :placeholder="$t('example.com')" /></FormField>
-            <button class="btn btn-primary btn-sm mt-3 self-end" :class="{ 'btn-disabled': saving }" @click="saveSwitches()">{{ $t('Save switches') }}</button>
-          </div>
+            <FormField label="Always direct" name="direct_domains" hint="These domains skip the proxy chain on the node."><ChipInput v-model="routing.direct_domains" :placeholder="$t('example.com')" :check="checkDirectDomain" /></FormField>
+            <FormBanner class="mt-3" />
+            <button class="btn btn-primary btn-sm mt-3 self-end" :disabled="saving">{{ $t('Save switches') }}</button>
+          </form>
         </Section>
       </div>
 
@@ -74,6 +75,7 @@
 import type { Inbound, Outbound, PanelNode, RoutingSettings, Rule } from '~/types/api'
 
 useHead({ title: 'Routing' })
+const route = useRoute()
 const side = useSideDrawer()
 const toast = useToast()
 const scope = ref('')
@@ -93,7 +95,7 @@ const allDaemons = computed(() => (nodes.value ?? []).flatMap(n => n.daemons))
 const visibleRules = computed(() => (rules.value ?? []).filter(r => !scope.value || r.daemon_id === null || String(r.daemon_id) === scope.value))
 const visibleOutbounds = computed(() => (outbounds.value ?? []).filter(o => !scope.value || String(o.daemon_id) === scope.value))
 
-watch(() => useRoute().query.drawer, (d) => {
+watch(() => route.query.drawer, (d) => {
   if (!d) {
     refreshRules()
     refreshOutbounds()
@@ -157,7 +159,10 @@ async function move(r: Rule, dir: number) {
   await refreshRules()
 }
 
+const checkDirectDomain = (v: string) => (/^[a-z0-9*.-]+\.[a-z]{2,}$/i.test(v) ? undefined : 'Enter a domain, like example.com')
+const switchesForm = useForm(routing, () => ({}))
+
 const { loading: saving, run: saveSwitches } = useAsyncAction(async () => {
   await useApi('/settings/routing', { method: 'PUT', body: { ...routing.value } })
-}, 'Saved.')
+}, 'Saved.', switchesForm)
 </script>

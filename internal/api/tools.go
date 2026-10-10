@@ -42,6 +42,8 @@ func (s *Server) genKeys(w http.ResponseWriter, r *http.Request) {
 		}
 	case "wireguard":
 		out, err = keys.WireGuard()
+	case "turnable":
+		out, err = keys.Turnable()
 	case "ss2022":
 		var k string
 		k, err = keys.SS2022(req.Method)

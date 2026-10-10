@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"frostbite/internal/db"
 	"frostbite/internal/hub"
 	"frostbite/internal/link"
+	"frostbite/internal/spec"
 	"frostbite/node"
 )
 
@@ -113,20 +115,24 @@ type nodeRequest struct {
 }
 
 // clean validates a node request and fills defaults.
-func (n *nodeRequest) clean() string {
+func (n *nodeRequest) clean() error {
 	n.Name, n.Address = strings.TrimSpace(n.Name), strings.TrimSpace(n.Address)
 	n.Country = strings.ToUpper(strings.TrimSpace(n.Country))
 	switch {
 	case n.Name == "":
-		return "name is required"
+		return spec.Invalid("name", "name is required")
 	case n.Address == "":
-		return "address is required, it is what clients will connect to"
+		return spec.Invalid("address", "address is required, it is what clients will connect to")
+	case strings.ContainsAny(n.Address, " /\\") || strings.Contains(n.Address, "://"):
+		return spec.Invalid("address", "use a bare domain or IP address, without a scheme, path or spaces")
 	case len(n.Country) > 2:
-		return "country must be a two letter code"
+		return spec.Invalid("country", "country must be a two letter code")
 	case n.TrafficMultiplier != nil && *n.TrafficMultiplier < 0:
-		return "traffic multiplier can't be negative"
+		return spec.Invalid("traffic_multiplier", "traffic multiplier can't be negative")
+	case n.TrafficLimit < 0:
+		return spec.Invalid("traffic_limit", "traffic limit can't be negative")
 	}
-	return ""
+	return nil
 }
 
 // createNode adds a node.
@@ -136,8 +142,8 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	mult := 1.0
@@ -168,8 +174,8 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	mult := 1.0
@@ -288,7 +294,7 @@ func (s *Server) createDaemon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if core.Get(req.Kind) == nil {
-		badRequest(w, "unknown core "+strconv.Quote(req.Kind))
+		invalid(w, "kind", "unknown core "+strconv.Quote(req.Kind))
 		return
 	}
 	name := strings.TrimSpace(req.Name)
@@ -325,7 +331,7 @@ func (s *Server) updateDaemon(w http.ResponseWriter, r *http.Request) {
 	if len(req.RawPatch) > 0 && string(req.RawPatch) != "null" {
 		var probe map[string]any
 		if err := json.Unmarshal(req.RawPatch, &probe); err != nil {
-			badRequest(w, "raw patch must be a json object")
+			invalid(w, "raw_patch", "raw patch must be a json object")
 			return
 		}
 	} else {
@@ -362,7 +368,32 @@ func (s *Server) updateDaemon(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, l := range edgeListen {
 		if _, _, err := net.SplitHostPort(l); err != nil {
-			badRequest(w, fmt.Sprintf("listen address %q must look like :443", l))
+			invalid(w, "edge_listen", fmt.Sprintf("listen address %q must look like :443", l))
+			return
+		}
+	}
+	if edgeDefault != "" {
+		if _, _, err := net.SplitHostPort(edgeDefault); err != nil {
+			invalid(w, "edge_default", fmt.Sprintf("%q must look like host:port", edgeDefault))
+			return
+		}
+	}
+	if req.LogLevel != "" && !slices.Contains([]string{"debug", "info", "warning", "error", "none"}, req.LogLevel) {
+		invalid(w, "log_level", "log level must be debug, info, warning, error or none")
+		return
+	}
+	if req.DNSStrategy != "" && !slices.Contains([]string{"prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"}, req.DNSStrategy) {
+		invalid(w, "dns_strategy", "unknown DNS strategy")
+		return
+	}
+	if final != "direct" && final != "block" {
+		outs, err := s.Queries.ListOutbounds(r.Context())
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		if !slices.ContainsFunc(outs, func(o db.Outbound) bool { return o.DaemonID == id && o.Tag == final }) {
+			invalid(w, "final_outbound", fmt.Sprintf("this daemon has no outbound called %q", final))
 			return
 		}
 	}

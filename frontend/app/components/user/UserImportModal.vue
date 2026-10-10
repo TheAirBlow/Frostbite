@@ -7,7 +7,9 @@
         <p class="text-base-content/60 text-sm">
           {{ $t('Upload the database file of 3x-ui (x-ui.db), Marzban (db.sqlite3) or Hiddify (hiddifypanel.db). It is only read, and the panel is recognised on its own. UUIDs, passwords, limits, usage, expiry and "starts at first use" carry over. Work on a copy if the old panel is still running.') }}
         </p>
-        <input type="file" accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/octet-stream" class="file-input file-input-sm w-full" @change="dbFile = ($event.target as HTMLInputElement).files?.[0] ?? null; report = null">
+        <FormField label="Database file" name="file" required>
+          <input type="file" accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/octet-stream" class="file-input file-input-sm w-full" @change="dbFile = ($event.target as HTMLInputElement).files?.[0] ?? null; report = null">
+        </FormField>
         <p v-if="report?.panel" class="text-sm"><Icon name="fa6-solid:circle-check" size="13" class="text-success" /> {{ $t('Recognised a {panel} database.', { panel: report.panel }) }}</p>
       </template>
 
@@ -15,12 +17,14 @@
         {{ $t('Paste or upload a CSV or JSON list. Column names are matched loosely (username, name, email, uuid, traffic_limit, usage_limit_GB, used_traffic, expire, package_days, note, tags, telegram_id, enable and what those panels call them). Existing credentials are kept, so users\' apps keep working after you move the nodes.') }}
       </p>
       <template v-if="source === 'text'">
-        <input type="file" accept=".csv,.json,text/csv,application/json,text/plain" class="file-input file-input-sm w-full" @change="load">
-        <textarea v-model="text" class="textarea w-full font-mono text-xs" rows="8" spellcheck="false" placeholder="username,uuid,traffic_gb,expire&#10;alice,,50,2027-01-31" />
+        <input type="file" accept=".csv,.json,text/csv,application/json,text/plain" class="file-input file-input-sm w-full" :aria-label="$t('Load a file')" @change="load">
+        <FormField label="The list" name="data" required>
+          <textarea v-model="text" class="textarea w-full font-mono text-xs" rows="8" spellcheck="false" placeholder="username,uuid,traffic_gb,expire&#10;alice,,50,2027-01-31" />
+        </FormField>
       </template>
 
       <Skeleton v-if="!squads" :rows="1" />
-      <FormField v-else label="Add them to squads">
+      <FormField v-else label="Add them to squads" name="squad_ids">
         <div class="flex flex-wrap gap-1.5">
           <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="squadIds.includes(s.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="squadIds = squadIds.includes(s.id) ? squadIds.filter(x => x !== s.id) : [...squadIds, s.id]">{{ s.name }}</button>
         </div>
@@ -42,9 +46,10 @@
     </div>
 
     <template v-if="!report || report.dry_run" #footer>
+      <FormBanner class="mb-2" />
       <div class="flex justify-end gap-2">
-        <button class="btn" :class="{ 'btn-disabled': !ready || working }" @click="run(true)">{{ $t('Check first') }}</button>
-        <button class="btn btn-primary" :class="{ 'btn-disabled': !report || !report.created || working }" @click="run(false)"><span v-if="working" class="loading loading-spinner loading-xs" /> Import {{ report?.created ?? '' }}</button>
+        <button class="btn" :disabled="working" @click="run(true)">{{ $t('Check first') }}</button>
+        <button class="btn btn-primary" :disabled="!report || !report.created || working" @click="run(false)"><span v-if="working" class="loading loading-spinner loading-xs" /> Import {{ report?.created ?? '' }}</button>
       </div>
     </template>
   </AppModal>
@@ -72,7 +77,11 @@ async function load(e: Event) {
   if (f) text.value = await f.text()
 }
 
-const ready = computed(() => (source.value === 'db' ? !!dbFile.value : !!text.value.trim()))
+const formApi = useForm(() => ({ file: dbFile.value?.name ?? '', data: text.value }), v => problems(
+  source.value === 'db'
+    ? { file: checkRequired(v.file, 'Choose the database file') }
+    : { data: checkRequired(v.data, 'Paste a list or load a file') },
+))
 
 const { loading: working, run } = useAsyncAction(async (dry: boolean) => {
   if (source.value === 'db') {
@@ -91,5 +100,5 @@ const { loading: working, run } = useAsyncAction(async (dry: boolean) => {
     report.value = await useApi<ImportReport>('/users/import', { method: 'POST', body: { data: text.value, squad_ids: squadIds.value, dry_run: dry } })
   }
   if (!dry) await refreshNuxtData('users')
-})
+}, undefined, formApi)
 </script>

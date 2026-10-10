@@ -1,8 +1,8 @@
 <template>
   <div class="flex items-center gap-2">
-    <label class="bg-base-100 border-base-content/20 focus-within:border-primary flex h-9 min-w-0 flex-1 items-center gap-1 rounded-field border px-3" :class="{ 'opacity-40': unlimited }">
-      <input v-model.number="amount" type="number" min="0" step="any" :disabled="unlimited" class="w-full min-w-0 bg-transparent text-sm" :placeholder="unlimited ? '∞' : '0'">
-      <select v-model="unit" :disabled="unlimited" class="bg-transparent text-sm">
+    <label class="input min-w-0 flex-1" :class="{ 'opacity-50': unlimited }">
+      <input v-model.number="amount" type="number" min="0" step="any" :disabled="unlimited" class="min-w-0" :placeholder="unlimited ? '∞' : '0'" :aria-label="$t('Amount')">
+      <select v-model="unit" :disabled="unlimited" class="bg-transparent" :aria-label="$t('Unit')">
         <option v-for="u in units" :key="u.label" :value="u.label">{{ u.label }}</option>
       </select>
     </label>
@@ -34,9 +34,22 @@ const unit = ref(pickUnit(model.value))
 const unlimited = computed(() => props.allowUnlimited && model.value === 0)
 const size = computed(() => units.find(u => u.label === unit.value)!.size)
 
+// a value that arrives after the first render (a form that loads its data) picks the unit that reads best
+let typed = false
+watch(model, (v, old) => {
+  if (typed) {
+    typed = false
+    return
+  }
+  if (old === 0 && v > 0) unit.value = pickUnit(v)
+})
+
 const amount = computed({
   get: () => (model.value ? Number((model.value / size.value).toFixed(2)) : null),
-  set: (v: number | null) => (model.value = Math.max(0, Math.round((v || 0) * size.value))),
+  set: (v: number | null) => {
+    typed = true
+    model.value = Math.max(0, Math.round((v || 0) * size.value))
+  },
 })
 
 function toggleUnlimited(on: boolean) {

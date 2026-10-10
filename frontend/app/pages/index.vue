@@ -121,13 +121,10 @@ const { data: inbounds } = useAsyncData('dash-inbounds', () => useApi<Inbound[]>
 const { data: squads } = useAsyncData('dash-squads', () => useApi<Squad[]>('/squads'))
 const shown = useDelayedPending(pending)
 
-onMounted(() => {
-  const t = setInterval(() => {
-    refresh()
-    refreshNodes()
-  }, 15000)
-  onScopeDispose(() => clearInterval(t))
-})
+useIntervalFn(() => {
+  refresh()
+  refreshNodes()
+}, 15000)
 
 const series = computed(() => (data.value?.traffic.series ?? []).map(p => ({ hour: p.hour, Download: p.down, Upload: p.up })))
 const categories = { Download: { name: 'Download', color: 'var(--color-primary)' }, Upload: { name: 'Upload', color: 'var(--color-secondary)' } }

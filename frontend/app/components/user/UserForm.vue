@@ -1,39 +1,37 @@
 <template>
   <div class="flex flex-col gap-3">
-    <FormField label="Username">
+    <FormField label="Username" name="username" required hint="2 to 64 characters: letters, digits, dot, dash, underscore or @.">
       <div class="join w-full">
-        <input v-model="form.username" class="input join-item w-full" :placeholder="$t('alice')" autocomplete="off" required>
+        <input v-model="form.username" class="input join-item w-full" :placeholder="$t('alice')" autocomplete="off">
         <button v-if="mode === 'create'" type="button" class="btn join-item" :title="$t('Pick a random name')" @click="form.username = randomName()">
           <Icon name="fa6-solid:dice" size="14" />
         </button>
       </div>
     </FormField>
 
-    <FormField v-if="mode === 'create' && plans.length" label="Start from a plan" hint="Fills in the fields below. You can still change them.">
+    <FormField v-if="mode === 'create' && plans.length" label="Start from a plan" name="plan_id" hint="Fills in the fields below. You can still change them.">
       <select class="select w-full" :value="form.plan_id ?? ''" @change="pickPlan(($event.target as HTMLSelectElement).value)">
         <option value="">{{ $t('No plan') }}</option>
         <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
     </FormField>
 
-    <div v-if="mode === 'edit'" class="flex flex-col gap-1">
-      <p class="fieldset-legend">{{ $t('Status') }}</p>
+    <FormField v-if="mode === 'edit'" label="Status" name="status" :hint="stateNote">
       <Segmented v-model="form.status" :options="statusOptions" />
-      <p v-if="stateNote" class="text-base-content/60 text-xs">{{ stateNote }}</p>
-    </div>
+    </FormField>
 
-    <FormField label="Traffic limit" hint="Counted against the node multipliers.">
+    <FormField label="Traffic limit" name="traffic_limit" hint="Counted against the node multipliers.">
       <ByteInput v-model="form.traffic_limit" />
     </FormField>
 
     <div class="grid gap-3 sm:grid-cols-2">
-      <FormField label="Resets">
+      <FormField label="Resets" name="reset_strategy">
         <select v-model="form.reset_strategy" class="select w-full">
           <option v-for="(label, key) in resetLabels" :key="key" :value="key">{{ label }}</option>
         </select>
       </FormField>
 
-      <FormField v-if="mode === 'create'" label="Valid for">
+      <FormField v-if="mode === 'create'" label="Valid for" name="duration_days">
         <div class="flex items-center gap-2">
           <input v-model.number="form.duration_days" type="number" min="0" class="input w-full" :placeholder="$t('0 = never expires')" :disabled="!!form.expire_at">
           <span class="text-base-content/60 text-sm">{{ $t('days') }}</span>
@@ -44,7 +42,7 @@
         </div>
       </FormField>
 
-      <FormField v-else label="Expires on">
+      <FormField v-else label="Expires on" name="expire_at">
         <div class="flex items-center gap-2">
           <input v-model="form.expire_at" type="date" class="input w-full">
           <button v-if="form.expire_at" type="button" class="btn btn-ghost btn-sm" @click="form.expire_at = ''">{{ $t('Never') }}</button>
@@ -54,11 +52,11 @@
 
     <ToggleRow v-if="mode === 'create'" v-model="form.start_on_first_use" label="Start the clock on first use" hint="The user stays on hold and the validity only starts counting at their first connection." />
 
-    <FormField v-if="form.status === 'on_hold' && mode === 'edit'" label="Days to run after first use">
+    <FormField v-if="form.status === 'on_hold' && mode === 'edit'" label="Days to run after first use" name="on_hold_days">
       <input v-model.number="form.on_hold_days" type="number" min="0" class="input w-full">
     </FormField>
 
-    <FormField label="Squads" hint="Which inbounds this user can connect to.">
+    <FormField label="Squads" name="squad_ids" hint="Which inbounds this user can connect to.">
       <div v-if="squads.length" class="flex flex-wrap gap-1.5">
         <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="form.squad_ids.includes(s.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="toggleSquad(s.id)">
           <Icon :name="form.squad_ids.includes(s.id) ? 'fa6-solid:check' : 'fa6-solid:plus'" size="10" /> {{ s.name }}
@@ -67,26 +65,26 @@
       <p v-else class="text-warning text-sm">{{ $t('There are no squads yet, so this user would get nothing.') }} <NuxtLink to="/access" class="link">{{ $t('Create one') }}</NuxtLink>.</p>
     </FormField>
 
-    <FormField label="Tags">
+    <FormField label="Tags" name="tags">
       <ChipInput v-model="form.tags" :placeholder="$t('Add tags, press enter')" />
     </FormField>
 
-    <FormField label="Note">
+    <FormField label="Note" name="note">
       <textarea v-model="form.note" class="textarea w-full" rows="2" :placeholder="$t('Anything worth remembering')" />
     </FormField>
 
     <Advanced :title="$t('Limits and contacts')">
       <div class="grid gap-3 sm:grid-cols-2">
-        <FormField label="Device limit" hint="Counted by the device id apps send. 0 is unlimited.">
+        <FormField label="Device limit" name="device_limit" hint="Counted by the device id apps send. 0 is unlimited.">
           <input v-model.number="form.device_limit" type="number" min="0" class="input w-full">
         </FormField>
-        <FormField label="Simultaneous IPs" hint="Going over cuts the user off for a few minutes. 0 is unlimited.">
+        <FormField label="Simultaneous IPs" name="ip_limit" hint="Going over cuts the user off for a few minutes. 0 is unlimited.">
           <input v-model.number="form.ip_limit" type="number" min="0" class="input w-full">
         </FormField>
-        <FormField label="Email">
+        <FormField label="Email" name="email">
           <input v-model="form.email" type="email" class="input w-full">
         </FormField>
-        <FormField label="Telegram ID">
+        <FormField label="Telegram ID" name="telegram_id" hint="Lets the bot recognise this user.">
           <input v-model.number="form.telegram_id" type="number" class="input w-full" :placeholder="$t('optional')">
         </FormField>
       </div>

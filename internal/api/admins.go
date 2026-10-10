@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"frostbite/internal/db"
+	"frostbite/internal/spec"
 )
 
 // registerAdmins registers the endpoints for managing panel accounts.
@@ -47,6 +48,17 @@ func (s *Server) listAdmins(w http.ResponseWriter, r *http.Request) {
 	ok(w, out)
 }
 
+// checkQuotas refuses quotas below zero.
+func (req adminRequest) checkQuotas() error {
+	if req.UserQuota != nil && *req.UserQuota < 0 {
+		return spec.Invalid("user_quota", "can't be negative")
+	}
+	if req.TrafficQuota != nil && *req.TrafficQuota < 0 {
+		return spec.Invalid("traffic_quota", "can't be negative")
+	}
+	return nil
+}
+
 // createAdmin adds a panel account.
 func (s *Server) createAdmin(w http.ResponseWriter, r *http.Request) {
 	var req adminRequest
@@ -56,18 +68,22 @@ func (s *Server) createAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
 	if !usernamePattern.MatchString(req.Username) {
-		badRequest(w, "username must be 2-32 characters: lowercase letters, digits, dot, dash or underscore")
+		invalid(w, "username", "username must be 2-32 characters: lowercase letters, digits, dot, dash or underscore")
 		return
 	}
 	if len(req.Password) < 8 {
-		badRequest(w, "the password must be at least 8 characters")
+		invalid(w, "password", "the password must be at least 8 characters")
+		return
+	}
+	if err := req.checkQuotas(); err != nil {
+		badInput(w, err)
 		return
 	}
 	if req.Role == "" {
 		req.Role = RoleAdmin
 	}
 	if !validRole(req.Role) {
-		badRequest(w, "role must be owner, admin or reseller")
+		invalid(w, "role", "role must be owner, admin or reseller")
 		return
 	}
 
@@ -101,12 +117,16 @@ func (s *Server) updateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validRole(req.Role) {
-		badRequest(w, "role must be owner, admin or reseller")
+		invalid(w, "role", "role must be owner, admin or reseller")
+		return
+	}
+	if err := req.checkQuotas(); err != nil {
+		badInput(w, err)
 		return
 	}
 	enabled := req.Enabled == nil || *req.Enabled
 	if id == me.ID && (!enabled || req.Role != RoleOwner) {
-		badRequest(w, "you can't demote or disable your own account")
+		invalid(w, "role", "you can't demote or disable your own account")
 		return
 	}
 
@@ -129,8 +149,12 @@ func (s *Server) resetAdminPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req passwordRequest
-	if err := decode(r, &req); err != nil || len(req.New) < 8 {
-		badRequest(w, "the new password must be at least 8 characters")
+	if err := decode(r, &req); err != nil {
+		badRequest(w, err.Error())
+		return
+	}
+	if len(req.New) < 8 {
+		invalid(w, "new", "the new password must be at least 8 characters")
 		return
 	}
 	hash, err := HashPassword(req.New)

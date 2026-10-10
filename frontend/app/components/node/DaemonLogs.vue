@@ -2,7 +2,7 @@
   <AppModal :title="`${daemon.name} logs`" :subtitle="coreLabels[daemon.kind]" max-width="max-w-4xl" @close="emit('close')">
     <div class="mb-3 flex flex-wrap items-center gap-2">
       <select v-model.number="lines" class="select select-sm w-auto"><option :value="100">{{ $t('Last 100') }}</option><option :value="300">{{ $t('Last 300') }}</option><option :value="1000">{{ $t('Last 1000') }}</option></select>
-      <button class="btn btn-sm" :class="{ 'btn-disabled': loading }" @click="load"><span v-if="loading" class="loading loading-spinner loading-xs" /><Icon v-else name="fa6-solid:rotate" size="12" /> {{ $t('Refresh') }}</button>
+      <button class="btn btn-sm" :disabled="loading" @click="load"><span v-if="loading" class="loading loading-spinner loading-xs" /><Icon v-else name="fa6-solid:rotate" size="12" /> {{ $t('Refresh') }}</button>
       <label class="flex cursor-pointer items-center gap-2 text-sm"><input v-model="follow" type="checkbox" class="toggle toggle-xs toggle-primary"> {{ $t('Follow') }}</label>
       <CopyButton :value="text" class="ml-auto" />
     </div>

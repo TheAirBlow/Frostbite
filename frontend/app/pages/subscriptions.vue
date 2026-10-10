@@ -5,21 +5,22 @@
     </PageHeader>
 
     <!-- settings -->
-    <form v-if="tab === 'settings' && sub" class="grid gap-4 xl:grid-cols-2" @submit.prevent="saveSub()">
+    <FormScope v-if="tab === 'settings' && sub" :form="subForm">
+    <form class="grid gap-4 xl:grid-cols-2" novalidate @submit.prevent="saveSub()">
       <Section :title="$t('Profile')">
         <div class="flex flex-col gap-3">
-          <FormField label="Title" hint="Shown by apps as the name of the profile."><input v-model="sub.title" class="input w-full"></FormField>
-          <FormField label="Announcement" hint="A short message some apps show at the top."><textarea v-model="sub.announce" class="textarea w-full" rows="2" /></FormField>
+          <FormField label="Title" name="title" hint="Shown by apps as the name of the profile."><input v-model="sub.title" class="input w-full"></FormField>
+          <FormField label="Announcement" name="announce" hint="A short message some apps show at the top."><textarea v-model="sub.announce" class="textarea w-full" rows="2" /></FormField>
           <div class="grid gap-3 sm:grid-cols-2">
-            <FormField label="Support link"><input v-model="sub.support_url" type="url" class="input w-full" :placeholder="$t('https://t.me/…')"></FormField>
-            <FormField label="Web page link" hint="Apps with a button for it open this."><input v-model="sub.web_page_url" type="url" class="input w-full"></FormField>
+            <FormField label="Support link" name="support_url"><input v-model="sub.support_url" class="input w-full" :placeholder="$t('https://t.me/…')"></FormField>
+            <FormField label="Web page link" name="web_page_url" hint="Apps with a button for it open this."><input v-model="sub.web_page_url" class="input w-full"></FormField>
           </div>
-          <FormField label="Refresh every (hours)" hint="How often apps are asked to re-fetch."><input v-model.number="sub.update_hours" type="number" min="1" class="input w-28"></FormField>
+          <FormField label="Refresh every (hours)" name="update_hours" hint="How often apps are asked to re-fetch."><input v-model.number="sub.update_hours" type="number" min="1" class="input w-28"></FormField>
         </div>
       </Section>
       <Section :title="$t('Behaviour')">
         <div class="flex flex-col gap-1">
-          <FormField label="Format when the app is unknown">
+          <FormField label="Format when the app is unknown" name="default_format">
             <select v-model="sub.default_format" class="select w-full"><option value="auto">{{ $t('Guess from the app name') }}</option><option v-for="f in formats" :key="f" :value="f">{{ formatLabels[f] ?? f }}</option></select>
           </FormField>
           <ToggleRow v-model="sub.notice_profiles" label="Tell inactive users why" hint="Instead of an empty list, expired, limited and disabled users see one profile named after the reason." />
@@ -29,15 +30,15 @@
       <Section :title="$t('User page look')" hint="What people see at /u/their-link." class="xl:col-span-2">
         <div class="grid gap-4 md:grid-cols-2">
           <div class="flex flex-col gap-3">
-            <FormField label="Logo" hint="An https address, or paste an image as a data url. Empty keeps the snowflake."><input v-model="sub.logo_url" class="input w-full font-mono text-xs" :placeholder="$t('https://example.com/logo.png')"></FormField>
-            <FormField label="Accent colour">
+            <FormField label="Logo" name="logo_url" hint="An https address, or paste an image as a data url. Empty keeps the snowflake."><input v-model="sub.logo_url" class="input w-full font-mono text-xs" :placeholder="$t('https://example.com/logo.png')"></FormField>
+            <FormField label="Accent colour" name="accent">
               <div class="flex items-center gap-2">
                 <input type="color" class="size-9 cursor-pointer rounded-lg border-0 bg-transparent" :value="sub.accent || '#7cc8f7'" @input="sub.accent = ($event.target as HTMLInputElement).value">
                 <input v-model="sub.accent" class="input input-sm w-28 font-mono" :placeholder="$t('#7cc8f7')">
                 <button v-if="sub.accent" type="button" class="btn btn-ghost btn-sm" @click="sub.accent = ''">{{ $t('Reset') }}</button>
               </div>
             </FormField>
-            <FormField label="Footer" hint="A line under the page: a link to your site, terms, a contact."><input v-model="sub.footer" class="input w-full" maxlength="500"></FormField>
+            <FormField label="Footer" name="footer" hint="A line under the page: a link to your site, terms, a contact. Up to 500 characters."><input v-model="sub.footer" class="input w-full"></FormField>
           </div>
           <div class="bg-base-100 border-base-300 flex flex-col items-center gap-3 rounded-xl border p-5" :style="sub.accent ? { '--color-primary': sub.accent } : {}">
             <img v-if="sub.logo_url" :src="sub.logo_url" alt="" class="size-14 rounded-2xl object-contain">
@@ -48,31 +49,21 @@
           </div>
         </div>
       </Section>
-      <div class="xl:col-span-2 flex justify-end"><button class="btn btn-primary" :class="{ 'btn-disabled': saving }">{{ $t('Save settings') }}</button></div>
+      <div class="flex flex-col items-end gap-2 xl:col-span-2"><FormBanner class="w-full" /><button class="btn btn-primary" :disabled="saving">{{ $t('Save settings') }}</button></div>
     </form>
+    </FormScope>
 
     <!-- clients -->
     <div v-else-if="tab === 'clients'" class="grid gap-4 xl:grid-cols-2">
       <Section :title="$t('Client rules')" hint="The first rule whose pattern matches the app's user agent decides the format.">
         <template #actions><button class="btn btn-sm" @click="newRule()"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button></template>
         <div class="flex flex-col gap-2">
-          <div v-for="r in rules ?? []" :key="r.id" class="bg-base-100 border-base-300 rounded-xl border p-3">
-            <form class="grid gap-2 sm:grid-cols-12" @submit.prevent="saveRule(r)">
-              <input v-model="r.name" class="input input-sm sm:col-span-3" :placeholder="$t('Name')">
-              <input v-model="r.ua_regex" class="input input-sm font-mono sm:col-span-4" :placeholder="$t('clash|mihomo')" required>
-              <select v-model="r.format" class="select select-sm sm:col-span-2"><option v-for="f in formats" :key="f" :value="f">{{ f }}</option></select>
-              <select v-model="r.template_id" class="select select-sm sm:col-span-3"><option :value="null">{{ $t('No template') }}</option><option v-for="t in templates ?? []" :key="t.id" :value="t.id">{{ t.name }}</option></select>
-              <div class="flex items-center justify-between gap-2 sm:col-span-12">
-                <label class="flex items-center gap-2 text-sm"><input v-model="r.enabled" type="checkbox" class="toggle toggle-xs toggle-primary"> {{ $t('Enabled') }}</label>
-                <div class="flex gap-1"><ConfirmButton type="button" class="btn btn-ghost btn-xs text-error" confirm-label="Delete?" @confirmed="removeRule(r.id)"><Icon name="fa6-solid:trash" size="11" /></ConfirmButton><button class="btn btn-xs btn-primary">{{ $t('Save') }}</button></div>
-              </div>
-            </form>
-          </div>
+          <SubRuleRow v-for="r in rules ?? []" :key="r.id" :rule="r" :templates="templates ?? []" :formats="formats" @changed="refreshRules" />
           <p v-if="!rules?.length" class="text-base-content/50 text-sm">{{ $t('No custom rules. Built in detection already knows Clash, sing-box, v2rayN, Hiddify, Streisand, Happ and Shadowrocket.') }}</p>
         </div>
         <div class="bg-base-100 border-base-300 mt-4 rounded-xl border p-3">
           <p class="mb-1 text-sm font-medium">{{ $t('Try a user agent') }}</p>
-          <input v-model="tryUa" class="input input-sm w-full font-mono" :placeholder="$t('ClashMeta/1.18')">
+          <input v-model="tryUa" class="input w-full font-mono" :placeholder="$t('ClashMeta/1.18')">
           <p v-if="tryUa" class="mt-1 text-sm">→ <span class="badge badge-primary badge-soft">{{ tryFormat }}</span></p>
         </div>
       </Section>
@@ -91,21 +82,22 @@
 
     <!-- preview -->
     <div v-else-if="tab === 'preview'" class="flex flex-col gap-4">
-      <Section :title="$t('See what an app would get')">
+      <FormScope :form="previewForm"><Section :title="$t('See what an app would get')">
         <div class="grid gap-3 md:grid-cols-4">
-          <FormField label="User" class="md:col-span-2">
-            <input v-model="userSearch" class="input w-full" :placeholder="$t('Search by name')" list="preview-users" @change="pickUser">
+          <FormField label="User" name="user" class="md:col-span-2" required hint="Start typing, then pick one from the list.">
+            <input v-model="userSearch" class="input w-full" :placeholder="$t('Search by name')" list="preview-users" autocomplete="off" @change="pickUser">
             <datalist id="preview-users"><option v-for="u in userHits" :key="u.id" :value="u.username" /></datalist>
           </FormField>
-          <FormField label="Pretend to be">
+          <FormField label="Pretend to be" name="ua">
             <select v-model="uaPick" class="select w-full"><option v-for="(ua, name) in uaPresets" :key="name" :value="ua">{{ name }}</option></select>
           </FormField>
-          <FormField label="Force format">
+          <FormField label="Force format" name="format">
             <select v-model="forceFormat" class="select w-full"><option value="">{{ $t('Auto') }}</option><option v-for="f in formats" :key="f" :value="f">{{ f }}</option></select>
           </FormField>
         </div>
-        <button class="btn btn-primary btn-sm mt-3" :class="{ 'btn-disabled': !previewUser || previewing }" @click="runPreview()"><span v-if="previewing" class="loading loading-spinner loading-xs" /> {{ $t('Render') }}</button>
-      </Section>
+        <FormBanner class="mt-3" />
+        <button class="btn btn-primary btn-sm mt-3" :disabled="previewing" @click="runPreview()"><span v-if="previewing" class="loading loading-spinner loading-xs" /> {{ $t('Render') }}</button>
+      </Section></FormScope>
 
       <Section v-if="preview" :title="`Result: ${preview.format}`">
         <template #actions><CopyButton :value="preview.content" /></template>
@@ -114,15 +106,17 @@
       </Section>
     </div>
 
-    <AppModal v-if="editTemplate" :title="editTemplate.id ? 'Edit template' : 'New template'" max-width="max-w-2xl" @close="editTemplate = null">
-      <form id="tpl" class="flex flex-col gap-3" @submit.prevent="saveTemplate()">
+    <FormScope v-if="editTemplate" :form="tplForm">
+    <AppModal :title="editTemplate.id ? 'Edit template' : 'New template'" max-width="max-w-2xl" @close="editTemplate = null">
+      <form id="tpl" class="flex flex-col gap-3" novalidate @submit.prevent="saveTemplate()">
         <div class="grid gap-3 sm:grid-cols-2">
-          <FormField label="Name"><input v-model="editTemplate.name" class="input w-full" required></FormField>
-          <FormField label="Format"><select v-model="editTemplate.format" class="select w-full"><option v-for="f in formats" :key="f" :value="f">{{ f }}</option></select></FormField>
+          <FormField label="Name" name="name" required><input v-model="editTemplate.name" class="input w-full"></FormField>
+          <FormField label="Format" name="format"><select v-model="editTemplate.format" class="select w-full"><option v-for="f in formats" :key="f" :value="f">{{ f }}</option></select></FormField>
         </div>
-        <FormField label="Patch" hint="Objects merge, arrays replace, null deletes a key."><JsonField v-model="tplPatch" :rows="12" placeholder='{ "dns": { } }' /></FormField>
+        <FormField label="Patch" name="patch" hint="Objects merge, arrays replace, null deletes a key."><JsonField v-model="tplPatch" :rows="12" placeholder='{ "dns": { } }' /></FormField>
       </form>
       <template #footer>
+        <FormBanner class="mb-2" />
         <div class="flex items-center justify-between">
           <ConfirmButton v-if="editTemplate.id" type="button" class="btn btn-ghost text-error" confirm-label="Delete?" @confirmed="removeTemplate()">{{ $t('Delete') }}</ConfirmButton>
           <span v-else />
@@ -130,6 +124,7 @@
         </div>
       </template>
     </AppModal>
+    </FormScope>
   </div>
 </template>
 
@@ -146,9 +141,19 @@ const sub = ref<SubSettings | null>(null)
 watch(settings, (s) => {
   if (s && !sub.value) sub.value = { ...s.subscription }
 }, { immediate: true })
+const subForm = useForm(sub, (v) => {
+  const e: Record<string, Check> = {}
+  if (v.support_url) e.support_url = checkUrl(v.support_url)
+  if (v.web_page_url) e.web_page_url = checkUrl(v.web_page_url)
+  e.update_hours = checkInt(v.update_hours, 1, 24 * 30, 'a number of hours')
+  if (v.logo_url && !v.logo_url.startsWith('data:image/')) e.logo_url = checkUrl(v.logo_url)
+  if (v.accent) e.accent = checkHexColor(v.accent)
+  if (v.footer && v.footer.length > 500) e.footer = 'At most 500 characters'
+  return problems(e)
+}, { provide: false })
 const { loading: saving, run: saveSub } = useAsyncAction(async () => {
   await useApi('/settings/subscription', { method: 'PUT', body: { ...sub.value } })
-}, 'Saved.')
+}, 'Saved.', subForm)
 
 const { data: rules, refresh: refreshRules } = useAsyncData('sub-rules', () => useApi<SubRule[]>('/sub/rules'))
 const { data: templates, refresh: refreshTemplates } = useAsyncData('sub-templates', () => useApi<SubTemplate[]>('/sub/templates'))
@@ -162,15 +167,6 @@ async function newRule() {
     useToast().error(errorMessage(e))
   }
 }
-const { run: saveRule } = useAsyncAction(async (r: SubRule) => {
-  await useApi(`/sub/rules/${r.id}`, { method: 'PUT', body: { ...r } })
-  await refreshRules()
-}, 'Saved.')
-const { run: removeRule } = useAsyncAction(async (id: number) => {
-  await useApi(`/sub/rules/${id}`, { method: 'DELETE' })
-  await refreshRules()
-})
-
 const tryUa = ref('')
 const tryFormat = computed(() => {
   for (const r of rules.value ?? []) {
@@ -193,12 +189,16 @@ const tplPatch = computed({
   get: () => editTemplate.value?.patch ?? null,
   set: v => editTemplate.value && (editTemplate.value.patch = v ?? {}),
 })
+const tplForm = useForm(editTemplate, t => problems({
+  name: checkRequired(t.name, 'Give the template a name'),
+  patch: t.patch && typeof t.patch === 'object' && !Array.isArray(t.patch) ? undefined : 'The patch must be a JSON object',
+}), { provide: false })
 const { run: saveTemplate } = useAsyncAction(async () => {
   const t = editTemplate.value!
   await useApi(t.id ? `/sub/templates/${t.id}` : '/sub/templates', { method: t.id ? 'PUT' : 'POST', body: { name: t.name, format: t.format, patch: t.patch } })
   editTemplate.value = null
   await refreshTemplates()
-}, 'Saved.')
+}, 'Saved.', tplForm)
 const { run: removeTemplate } = useAsyncAction(async () => {
   await useApi(`/sub/templates/${editTemplate.value!.id}`, { method: 'DELETE' })
   editTemplate.value = null
@@ -226,7 +226,8 @@ const uaPresets: Record<string, string> = {
 const uaPick = ref(uaPresets['Clash Meta']!)
 const forceFormat = ref('')
 const preview = ref<{ format: string, content: string, headers: Record<string, string> } | null>(null)
+const previewForm = useForm(() => ({ user: previewUser.value }), v => problems({ user: v.user ? undefined : 'Pick a user from the list' }), { provide: false })
 const { loading: previewing, run: runPreview } = useAsyncAction(async () => {
   preview.value = await useApi('/sub/preview', { query: { user_id: previewUser.value!.id, ua: uaPick.value, format: forceFormat.value } })
-})
+}, undefined, previewForm)
 </script>

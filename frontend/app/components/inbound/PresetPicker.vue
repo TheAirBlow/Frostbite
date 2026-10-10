@@ -1,10 +1,10 @@
 <template>
   <AppModal :title="preset ? preset.label : 'New inbound'" :subtitle="preset ? preset.description : 'Pick a recipe. You can fine tune everything afterwards.'" max-width="max-w-3xl" @close="emit('close')">
     <div class="mb-4">
-      <FormField label="Create it on">
+      <FormField label="Create it on" name="daemon_id">
         <select v-model.number="daemonId" class="select w-full">
-          <optgroup v-for="n in nodes.filter(n => n.daemons.some(d => d.kind !== 'edge'))" :key="n.id" :label="`${flag(n.country)} ${n.name}`">
-            <option v-for="d in n.daemons.filter(d => d.kind !== 'edge')" :key="d.id" :value="d.id">{{ d.name }} ({{ coreLabels[d.kind] ?? d.kind }})</option>
+          <optgroup v-for="n in targets" :key="n.id" :label="`${flag(n.country)} ${n.name}`">
+            <option v-for="d in n.daemons" :key="d.id" :value="d.id">{{ d.name }} ({{ coreLabels[d.kind] ?? d.kind }})</option>
           </optgroup>
         </select>
       </FormField>
@@ -28,14 +28,17 @@
       </template>
     </template>
 
-    <form v-else id="preset" class="flex flex-col gap-3" @submit.prevent="create">
+    <form v-else id="preset" class="flex flex-col gap-3" novalidate @submit.prevent="create()">
       <div class="grid gap-3 sm:grid-cols-2">
-        <FormField v-for="p in preset.params" :key="p.key" :label="p.label" :hint="p.hint">
-          <input v-model="values[p.key]" :type="p.kind === 'number' ? 'number' : 'text'" class="input w-full" :placeholder="p.default">
+        <FormField v-for="p in preset.params" :key="p.key" :label="p.label" :hint="p.hint" :name="`params.${p.key}`" :required="p.required">
+          <select v-if="p.options" v-model="values[p.key]" class="select w-full">
+            <option v-for="o in p.options" :key="o" :value="o">{{ o }}</option>
+          </select>
+          <input v-else v-model="values[p.key]" :type="p.kind === 'number' ? 'number' : 'text'" class="input w-full" :placeholder="p.default" autocomplete="off">
         </FormField>
       </div>
       <div v-if="preset.id.includes('reality')" class="flex items-center gap-2">
-        <button type="button" class="btn btn-sm" :class="{ 'btn-disabled': testing }" @click="test"><Icon name="fa6-solid:vial" size="12" /> {{ $t('Test the handshake target') }}</button>
+        <button type="button" class="btn btn-sm" :disabled="testing" @click="test()"><Icon name="fa6-solid:vial" size="12" /> {{ $t('Test the handshake target') }}</button>
         <span v-if="testResult" class="text-xs" :class="testResult.ok ? 'text-success' : 'text-error'">{{ testResult.ok ? testResult.output : testResult.error }}</span>
       </div>
       <p v-if="needsCert" class="text-base-content/60 text-xs">
@@ -44,9 +47,10 @@
     </form>
 
     <template v-if="preset" #footer>
+      <FormBanner class="mb-2" />
       <div class="flex items-center justify-between gap-2">
-        <button type="button" class="btn btn-ghost" @click="preset = null"><Icon name="fa6-solid:arrow-left" size="12" /> {{ $t('Back') }}</button>
-        <button form="preset" class="btn btn-primary" :class="{ 'btn-disabled': saving }"><span v-if="saving" class="loading loading-spinner loading-xs" /> {{ $t('Create inbound') }}</button>
+        <button type="button" class="btn btn-ghost" @click="back"><Icon name="fa6-solid:arrow-left" size="12" /> {{ $t('Back') }}</button>
+        <button form="preset" class="btn btn-primary" :disabled="saving"><span v-if="saving" class="loading loading-spinner loading-xs" /> {{ $t('Create inbound') }}</button>
       </div>
     </template>
   </AppModal>
@@ -62,6 +66,11 @@ const side = useSideDrawer()
 const all = computed(() => props.nodes.flatMap(n => n.daemons).filter(d => d.kind !== 'edge'))
 const daemonId = ref(props.daemonId ?? all.value[0]?.id ?? 0)
 const kind = computed(() => all.value.find(d => d.id === daemonId.value)?.kind ?? '')
+
+// once a recipe is picked only daemons running a core it supports may be chosen
+const targets = computed(() => props.nodes
+  .map(n => ({ ...n, daemons: n.daemons.filter(d => d.kind !== 'edge' && (!preset.value || preset.value.cores.includes(d.kind))) }))
+  .filter(n => n.daemons.length))
 
 const { data: presets } = useAsyncData('presets', () => useApi<Preset[]>('/presets'))
 const groups = computed(() => {
@@ -79,8 +88,50 @@ const needsCert = computed(() => preset.value?.params.some(p => p.key === 'cert'
 
 function choose(p: Preset) {
   preset.value = p
+  if (!p.cores.includes(kind.value)) daemonId.value = all.value.find(d => p.cores.includes(d.kind))?.id ?? daemonId.value
   values.value = Object.fromEntries(p.params.map(prm => [prm.key, prm.default ?? '']))
 }
+
+function back() {
+  preset.value = null
+  formApi.reset()
+}
+
+// The backend speaks in inbound fields, the form in recipe answers.
+const answerFor: Record<string, string> = {
+  port: 'params.port',
+  'options.t_call_id': 'params.call',
+  'options.t_routes.0.target': 'params.target',
+  'options.t_routes.0.socket': 'params.socket',
+  'security.reality.dest': 'params.dest',
+  'options.mt_domain': 'params.domain',
+  'security.acme.domain': 'params.sni',
+  'security.sni': 'params.sni',
+  'security.cert_path': 'params.cert',
+  'security.key_path': 'params.key',
+  'options.wg_subnet': 'params.subnet',
+}
+
+const formApi = useForm(values, (v) => {
+  const e: Record<string, Check> = {}
+  for (const p of preset.value?.params ?? []) {
+    const val = (v[p.key] ?? '').toString().trim()
+    const at = `params.${p.key}`
+    if (!val) {
+      if (p.required) e[at] = `${p.label} is required`
+      else if (p.key === 'port' && !p.default) e[at] = 'Enter a port number'
+      continue
+    }
+    if (p.key === 'port') e[at] = checkPort(val)
+    else if (p.kind === 'number') e[at] = checkInt(val, 0, undefined, 'a number')
+    else if (p.key === 'target') e[at] = checkHostPort(val, { ipOnly: true })
+    else if (p.key === 'dest') e[at] = checkHostPort(val)
+    else if (p.key === 'sni' || p.key === 'domain') e[at] = checkDomain(val)
+    else if (p.key === 'email') e[at] = checkEmail(val)
+    else if (p.key === 'subnet') e[at] = checkCidr(val)
+  }
+  return problems(e)
+})
 
 function custom() {
   emit('close')
@@ -103,7 +154,14 @@ const { loading: saving, run: create } = useAsyncAction(async () => {
     const v = values.value[p.key]
     if (v !== '' && v !== undefined) params[p.key] = p.kind === 'number' ? Number(v) : v
   }
-  const i = await useApi<Inbound>('/inbounds', { method: 'POST', body: { daemon_id: daemonId.value, preset: preset.value!.id, params } })
-  emit('created', i)
-}, 'Inbound created.')
+  try {
+    const i = await useApi<Inbound>('/inbounds', { method: 'POST', body: { daemon_id: daemonId.value, preset: preset.value!.id, params } })
+    emit('created', i)
+  }
+  catch (e) {
+    // move the complaint onto the answer it is about
+    if (e instanceof ApiError && e.body?.field && answerFor[e.body.field]) e.body.field = answerFor[e.body.field]
+    throw e
+  }
+}, 'Inbound created.', formApi)
 </script>

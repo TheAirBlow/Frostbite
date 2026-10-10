@@ -20,6 +20,10 @@ type presetParam struct {
 	Hint    string `json:"hint,omitempty"`
 	Default string `json:"default,omitempty"`
 	Kind    string `json:"kind"` // string or number
+	// Required parameters have to be filled in: there is nothing sensible to fall back on.
+	Required bool `json:"required,omitempty"`
+	// Options turns the field into a choice.
+	Options []string `json:"options,omitempty"`
 }
 
 // preset builds a ready to use inbound from a handful of answers.
@@ -93,12 +97,12 @@ var presets = []preset{
 	},
 	{
 		ID: "turnable-vk", Label: "Turnable over VK", Group: "Other", Cores: []string{"turnable"},
-		Description: "Hides a tunnel in a public VK call. Leads to one destination, like a WireGuard inbound on this node.",
+		Description: "Hides a tunnel in a public VK call and leads it to a destination on this node, like a WireGuard inbound. More destinations can be added afterwards.",
 		Params: []presetParam{
 			pPort("56000"),
-			{Key: "call", Label: "Call ID", Hint: "The code at the end of a vk.com/call/join/ link", Kind: "string"},
+			{Key: "call", Label: "Call ID", Hint: "The code at the end of a vk.com/call/join/ link", Kind: "string", Required: true},
 			{Key: "target", Label: "Destination", Hint: "Where the tunnel leads, as ip:port", Default: "127.0.0.1:51820", Kind: "string"},
-			{Key: "socket", Label: "Network", Hint: "tcp or udp", Default: "udp", Kind: "string"},
+			{Key: "socket", Label: "Network", Hint: "What the destination speaks", Default: "udp", Kind: "string", Options: []string{"udp", "tcp"}},
 		},
 		build: func(p presetValues, req *inboundRequest) error {
 			pair, err := keys.Turnable()
@@ -108,9 +112,12 @@ var presets = []preset{
 			req.Protocol, req.Port = spec.ProtoTurnable, int32(p.num("port", 56000))
 			req.Security = spec.Security{Type: spec.SecurityNone}
 			req.Options = spec.Options{
-				TPlatform: spec.TurnablePlatform, TCallID: p.str("call", ""), TTarget: p.str("target", "127.0.0.1:51820"),
-				TSocket: p.str("socket", "udp"), TProto: spec.TurnableProto, TTransport: spec.TurnableTransport,
-				TEncryption: spec.TurnableEncryption, TPeers: spec.TurnablePeers, TPrivate: pair.Private, TPublic: pair.Public,
+				TPlatform: spec.TurnablePlatform, TCallID: p.str("call", ""), TProto: spec.TurnableProto,
+				TRoutes: []spec.TurnableRouteSpec{{
+					ID: spec.TurnableRoute, Target: p.str("target", "127.0.0.1:51820"), Socket: p.str("socket", "udp"),
+					Transport: spec.TurnableTransport, Encryption: spec.TurnableEncryption,
+				}},
+				TPeers: spec.TurnablePeers, TPrivate: pair.Private, TPublic: pair.Public,
 			}
 			return nil
 		},

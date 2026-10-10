@@ -1,8 +1,8 @@
 <template>
   <!-- mobile: bottom tab bar -->
   <nav
-    class="bg-base-200/95 border-base-300 fixed inset-x-0 bottom-0 z-40 grid border-t backdrop-blur transition-transform duration-200 sm:hidden"
-    :class="[hidden ? 'translate-y-[calc(100%_+_1px)]' : '', `grid-cols-${mobileMain.length + 1}`]"
+    class="bg-base-200/95 border-base-300 fixed inset-x-0 bottom-0 z-40 grid border-t backdrop-blur transition-transform duration-200 pb-[env(safe-area-inset-bottom)] sm:hidden"
+    :class="hidden ? 'translate-y-[calc(100%_+_1px)]' : ''"
     :style="{ gridTemplateColumns: `repeat(${mobileMain.length + 1}, minmax(0, 1fr))` }"
   >
     <NuxtLink v-for="item in mobileMain" :key="item.to" :to="item.to" :class="tab" active-class="text-primary" exact-active-class="text-primary">
@@ -25,13 +25,13 @@
   </nav>
 
   <!-- desktop: left rail -->
-  <nav class="bg-base-200 border-base-300 fixed top-0 left-0 z-40 hidden h-screen w-20 flex-col justify-between border-r py-4 sm:flex">
+  <nav class="bg-base-200 border-base-300 fixed top-0 left-0 z-40 hidden h-dvh w-20 flex-col justify-between border-r py-4 sm:flex">
     <div class="flex flex-col items-center gap-1.5">
       <NuxtLink to="/" class="mb-3 grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-primary/90 to-secondary/90 text-primary-content shadow-lg shadow-primary/20">
         <Icon name="fa6-solid:snowflake" size="22" />
       </NuxtLink>
       <NavKbdTooltip v-for="item in items" :key="item.to" :label="t(item.key)" :kbd="item.kbd">
-        <NuxtLink :to="item.to" :class="rail" active-class="!bg-primary/15 !text-primary" :exact-active-class="item.to === '/' ? '!bg-primary/15 !text-primary' : ''">
+        <NuxtLink :to="item.to" :class="rail" active-class="bg-primary/15! text-primary!" :exact-active-class="item.to === '/' ? 'bg-primary/15! text-primary!' : ''">
           <Icon :name="item.icon" size="19" />
         </NuxtLink>
       </NavKbdTooltip>

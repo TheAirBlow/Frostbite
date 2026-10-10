@@ -185,3 +185,58 @@ func TestStatsAreBookedByLabel(t *testing.T) {
 		t.Fatalf("the last traffic of a removed user was lost: %+v", st.Users)
 	}
 }
+
+func twoRoutes(t *testing.T, users ...spec.User) spec.Daemon {
+	d := inbound(t, users...)
+	o := d.Inbounds[0].Options
+	o.TTarget, o.TSocket = "", ""
+	o.TRoutes = []spec.TurnableRouteSpec{
+		{ID: "wg", Target: "127.0.0.1:51820", Socket: "udp"},
+		{ID: "web", Target: "127.0.0.1:8443", Socket: "tcp"},
+	}
+	d.Inbounds[0].Options = o
+	if err := d.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func TestEveryRouteIsServedAndAllowedForEveryUser(t *testing.T) {
+	r, started := harness(t)
+	u := user(1)
+	if err := r.Apply(context.Background(), twoRoutes(t, u), nil); err != nil {
+		t.Fatal(err)
+	}
+	f := (*started)[0]
+	for id, port := range map[string]int{"wg": 51820, "web": 8443} {
+		rt, err := f.prov.GetRoute(id)
+		if err != nil || rt.Port != port {
+			t.Fatalf("route %s is wrong: %+v %v", id, rt, err)
+		}
+	}
+	got, err := f.prov.GetUser(u.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.AllowedRoutes) != 2 {
+		t.Fatalf("the user should be allowed on both routes: %v", got.AllowedRoutes)
+	}
+}
+
+func TestChangingARouteRestartsTheServer(t *testing.T) {
+	r, started := harness(t)
+	d := twoRoutes(t, user(1))
+	if err := r.Apply(context.Background(), d, nil); err != nil {
+		t.Fatal(err)
+	}
+	d.Inbounds[0].Options.TRoutes = d.Inbounds[0].Options.TRoutes[:1]
+	if err := r.Apply(context.Background(), d, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(*started) != 2 {
+		t.Fatalf("dropping a destination must restart the server, started %d", len(*started))
+	}
+	if _, err := (*started)[1].prov.GetRoute("web"); err == nil {
+		t.Fatal("the removed destination is still served")
+	}
+}

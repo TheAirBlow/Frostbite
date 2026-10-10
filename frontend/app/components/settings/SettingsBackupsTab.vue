@@ -4,7 +4,7 @@
       <div class="flex flex-wrap gap-2">
         <a href="/api/backup/download" class="btn btn-primary btn-sm"><Icon name="fa6-solid:download" size="12" /> {{ $t('Download a backup') }}</a>
         <a href="/api/backup/download?history=1" class="btn btn-sm"><Icon name="fa6-solid:download" size="12" /> {{ $t('With traffic history') }}</a>
-        <button class="btn btn-sm" :class="{ 'btn-disabled': creating }" @click="create()"><Icon name="fa6-solid:floppy-disk" size="12" /> {{ $t('Save one on the server') }}</button>
+        <button class="btn btn-sm" :disabled="creating" @click="create()"><Icon name="fa6-solid:floppy-disk" size="12" /> {{ $t('Save one on the server') }}</button>
       </div>
     </Section>
 
@@ -22,20 +22,23 @@
     </Section>
 
     <Section v-if="schedule" :title="$t('Automatic backups')">
-      <form class="flex flex-col gap-3" @submit.prevent="saveSchedule()">
+      <form class="flex flex-col gap-3" novalidate @submit.prevent="saveSchedule()">
         <ToggleRow v-model="schedule.enabled" label="Back up on a schedule" />
         <div class="grid gap-3 sm:grid-cols-2">
-          <FormField label="Every (hours)"><input v-model.number="schedule.interval_hours" type="number" min="1" class="input w-full"></FormField>
-          <FormField label="Keep the newest"><input v-model.number="schedule.keep" type="number" min="1" class="input w-full"></FormField>
+          <FormField label="Every (hours)" name="interval_hours" required><input v-model.number="schedule.interval_hours" type="number" min="1" class="input w-full"></FormField>
+          <FormField label="Keep the newest" name="keep" required><input v-model.number="schedule.keep" type="number" min="1" class="input w-full"></FormField>
         </div>
         <ToggleRow v-model="schedule.history" label="Include traffic history" hint="Makes files larger on busy panels." />
+        <FormBanner />
         <button class="btn btn-primary btn-sm self-end">{{ $t('Save schedule') }}</button>
       </form>
     </Section>
 
     <Section :title="$t('Restore')" hint="Replaces everything with the contents of a backup file.">
       <div class="alert alert-warning alert-soft mb-3 text-sm"><Icon name="fa6-solid:triangle-exclamation" size="14" /><span>{{ $t('Current data is overwritten and everyone is signed out, you included. Sign in with an account from the backup afterwards.') }}</span></div>
-      <input ref="picker" type="file" accept=".gz,.json,application/gzip,application/json" class="file-input file-input-sm w-full" @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null">
+      <FormField label="Backup file" name="file">
+        <input ref="picker" type="file" accept=".gz,.json,application/gzip,application/json" class="file-input file-input-sm w-full" @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null">
+      </FormField>
       <ConfirmButton class="btn btn-error btn-sm mt-3" :disabled="!file || restoring" confirm-label="Overwrite everything?" @confirmed="restore()">
         <span v-if="restoring" class="loading loading-spinner loading-xs" /> {{ $t('Restore from this file') }}
       </ConfirmButton>
@@ -64,9 +67,14 @@ const { run: remove } = useAsyncAction(async (name: string) => {
   await refresh()
 }, 'Deleted.')
 
+const scheduleForm = useForm(schedule, s => problems({
+  interval_hours: checkInt(s.interval_hours, 1, 24 * 365, 'a number of hours'),
+  keep: checkInt(s.keep, 1, 1000, 'how many to keep'),
+}))
+
 const { run: saveSchedule } = useAsyncAction(async () => {
   schedule.value = await useApi<BackupSchedule>('/backup/schedule', { method: 'PUT', body: { ...schedule.value } })
-}, 'Saved.')
+}, 'Saved.', scheduleForm)
 
 const { loading: restoring, run: restore } = useAsyncAction(async () => {
   try {

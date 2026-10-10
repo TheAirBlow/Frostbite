@@ -329,7 +329,7 @@ func truncate(s string, n int) string {
 func (s *Server) previewSub(w http.ResponseWriter, r *http.Request) {
 	id := int64Param(r, "user_id")
 	if id == nil {
-		badRequest(w, "user_id is required")
+		invalid(w, "user_id", "pick a user to preview")
 		return
 	}
 	u, err := s.Queries.GetUser(r.Context(), *id)
@@ -363,19 +363,19 @@ type templateRequest struct {
 }
 
 // clean validates a template request.
-func (t *templateRequest) clean() string {
+func (t *templateRequest) clean() error {
 	t.Name = strings.TrimSpace(t.Name)
 	if t.Name == "" {
-		return "name is required"
+		return spec.Invalid("name", "name is required")
 	}
 	if !contains(share.Formats, t.Format) {
-		return "unknown format"
+		return spec.Invalid("format", "unknown format")
 	}
 	var probe map[string]any
 	if err := json.Unmarshal(t.Patch, &probe); err != nil {
-		return "the patch must be a json object"
+		return spec.Invalid("patch", "the patch must be a json object")
 	}
-	return ""
+	return nil
 }
 
 // contains reports whether list has v.
@@ -395,8 +395,8 @@ func (s *Server) createTemplate(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	t, err := s.Queries.CreateSubTemplate(r.Context(), db.CreateSubTemplateParams{Name: req.Name, Format: req.Format, Patch: req.Patch})
@@ -420,8 +420,8 @@ func (s *Server) updateTemplate(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	t, err := s.Queries.UpdateSubTemplate(r.Context(), db.UpdateSubTemplateParams{ID: id, Name: req.Name, Format: req.Format, Patch: req.Patch})
@@ -473,14 +473,17 @@ type subRuleRequest struct {
 }
 
 // clean validates a rule request.
-func (q *subRuleRequest) clean() string {
-	if _, err := regexp.Compile(q.UARegex); err != nil || q.UARegex == "" {
-		return "the user agent pattern is not a valid regular expression"
+func (q *subRuleRequest) clean() error {
+	if q.UARegex == "" {
+		return spec.Invalid("ua_regex", "the pattern is required")
+	}
+	if _, err := regexp.Compile(q.UARegex); err != nil {
+		return spec.Invalid("ua_regex", "not a valid regular expression: %s", err)
 	}
 	if !contains(share.Formats, q.Format) {
-		return "unknown format"
+		return spec.Invalid("format", "unknown format")
 	}
-	return ""
+	return nil
 }
 
 // createSubRule adds a user agent rule.
@@ -490,8 +493,8 @@ func (s *Server) createSubRule(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	rule, err := s.Queries.CreateSubRule(r.Context(), db.CreateSubRuleParams{
@@ -517,8 +520,8 @@ func (s *Server) updateSubRule(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	rule, err := s.Queries.UpdateSubRule(r.Context(), db.UpdateSubRuleParams{

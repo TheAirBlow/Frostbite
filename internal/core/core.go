@@ -2,7 +2,6 @@
 package core
 
 import (
-	"fmt"
 	"slices"
 
 	"frostbite/internal/spec"
@@ -48,13 +47,13 @@ func Get(kind string) *Descriptor {
 func (c Capabilities) Check(d spec.Daemon) error {
 	for _, in := range d.Inbounds {
 		if !slices.Contains(c.Protocols, in.Protocol) {
-			return fmt.Errorf("inbound %s: protocol %s is not supported by this core", in.Tag, in.Protocol)
+			return spec.Invalid("protocol", "protocol %s is not supported by this core", in.Protocol)
 		}
 		if t := in.Transport.Type; t != "" && !slices.Contains(c.Transports, t) {
-			return fmt.Errorf("inbound %s: transport %s is not supported by this core", in.Tag, t)
+			return spec.Invalid("transport.type", "transport %s is not supported by this core", t)
 		}
 		if s := in.Security.Type; s != "" && !slices.Contains(c.Securities, s) {
-			return fmt.Errorf("inbound %s: security %s is not supported by this core", in.Tag, s)
+			return spec.Invalid("security.type", "security %s is not supported by this core", s)
 		}
 	}
 	return nil

@@ -16,25 +16,25 @@ func (d *Daemon) Validate() error {
 	ports := map[string]string{}
 	for _, in := range d.Inbounds {
 		if in.Tag == "" {
-			return fmt.Errorf("inbound without a tag")
+			return Invalid("tag", "inbound without a tag")
 		}
 		if tags[in.Tag] {
-			return fmt.Errorf("duplicate inbound tag %q", in.Tag)
+			return Invalid("tag", "another inbound on this daemon already uses the tag %q", in.Tag)
 		}
 		tags[in.Tag] = true
 		if in.Port < 1 || in.Port > 65535 {
-			return fmt.Errorf("inbound %s: port %d is out of range", in.Tag, in.Port)
+			return Invalid("port", "port %d is out of range, use 1 to 65535", in.Port)
 		}
 		key := fmt.Sprintf("%s/%d", udpOrTCP(in), in.Port)
 		if other, ok := ports[key]; ok && in.Listen == "" {
-			return fmt.Errorf("inbound %s: port %d is already used by %s", in.Tag, in.Port, other)
+			return Invalid("port", "port %d is already used by %s", in.Port, other)
 		}
 		ports[key] = in.Tag
 		if err := in.validateSecurity(); err != nil {
-			return fmt.Errorf("inbound %s: %w", in.Tag, err)
+			return err
 		}
 		if in.Protocol == ProtoForward && (in.Forward == nil || in.Forward.Address == "" || in.Forward.Port == 0) {
-			return fmt.Errorf("inbound %s: forward target is missing", in.Tag)
+			return Invalid("forward.address", "the relay needs a target address and port")
 		}
 	}
 
@@ -68,54 +68,57 @@ func (in Inbound) validateSecurity() error {
 	case SecurityReality:
 		r := in.Security.Reality
 		if r == nil || r.Dest == "" || r.PrivateKey == "" || len(r.ServerNames) == 0 {
-			return fmt.Errorf("reality needs a target, server names and a private key")
+			return reality(r)
 		}
 		if _, _, err := net.SplitHostPort(r.Dest); err != nil {
-			return fmt.Errorf("reality target must look like host:port")
+			return Invalid("security.reality.dest", "the handshake target must look like host:port")
 		}
 		if r.XVer < 0 || r.XVer > 2 {
-			return fmt.Errorf("the PROXY header version must be 0, 1 or 2")
+			return Invalid("security.reality.xver", "the PROXY header version must be 0, 1 or 2")
 		}
 	case SecurityTLS:
 		if a := in.Security.ACME; a != nil {
 			if a.Domain == "" || net.ParseIP(a.Domain) != nil {
-				return fmt.Errorf("automatic certificates need a domain name, not an address")
+				return Invalid("security.acme.domain", "automatic certificates need a domain name, not an address")
 			}
 		} else if in.Security.CertPath == "" || in.Security.KeyPath == "" {
-			return fmt.Errorf("tls needs a certificate and a key")
+			if in.Security.CertPath == "" {
+				return Invalid("security.cert_path", "tls needs a certificate")
+			}
+			return Invalid("security.key_path", "tls needs a key")
 		}
 	}
 	switch in.Protocol {
 	case ProtoHysteria2, ProtoTUIC, ProtoAnyTLS, ProtoNaive:
 		if in.Security.Type != SecurityTLS {
-			return fmt.Errorf("%s requires tls", in.Protocol)
+			return Invalid("security.type", "%s requires tls", in.Protocol)
 		}
 	case ProtoMTProto:
 		if in.Security.Type != "" && in.Security.Type != SecurityNone {
-			return fmt.Errorf("mtproto brings its own disguise, leave security off")
+			return Invalid("security.type", "mtproto brings its own disguise, leave security off")
 		}
 		switch in.Options.MTMode {
 		case "padded":
 		case "faketls", "":
 			if in.Options.MTDomain == "" {
-				return fmt.Errorf("mtproto needs a cover site for the faketls disguise")
+				return Invalid("options.mt_domain", "mtproto needs a cover site for the faketls disguise")
 			}
 		default:
-			return fmt.Errorf("unknown mtproto disguise %q", in.Options.MTMode)
+			return Invalid("options.mt_mode", "unknown mtproto disguise %q", in.Options.MTMode)
 		}
 	case ProtoTurnable:
 		if in.Security.Type != "" && in.Security.Type != SecurityNone {
-			return fmt.Errorf("turnable brings its own encryption, leave security off")
+			return Invalid("security.type", "turnable brings its own encryption, leave security off")
 		}
 		if err := in.Options.validateTurnable(); err != nil {
-			return fmt.Errorf("turnable: %w", err)
+			return err
 		}
 	case ProtoWireGuard:
 		if in.Options.WGPrivate == "" {
-			return fmt.Errorf("wireguard needs a server key")
+			return Invalid("options.wg_private", "wireguard needs a server key")
 		}
 		if _, err := WGServerAddress(in.Options.WGSubnet); err != nil {
-			return fmt.Errorf("wireguard: %w", err)
+			return Invalid("options.wg_subnet", "%s", err)
 		}
 	}
 	return nil
@@ -180,4 +183,16 @@ func SameShape(a, b Daemon) bool {
 		return d
 	}
 	return reflect.DeepEqual(strip(a), strip(b))
+}
+
+// reality names the first thing a REALITY setup is missing.
+func reality(r *Reality) error {
+	switch {
+	case r == nil || r.Dest == "":
+		return Invalid("security.reality.dest", "reality needs a handshake target")
+	case len(r.ServerNames) == 0:
+		return Invalid("security.reality.server_names", "reality needs at least one server name")
+	default:
+		return Invalid("security.reality.private_key", "reality needs a private key")
+	}
 }

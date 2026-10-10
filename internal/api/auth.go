@@ -291,11 +291,11 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !VerifyPassword(admin.PasswordHash, req.Old) {
-		forbidden(w, "the current password is wrong")
+		failField(w, http.StatusForbidden, "forbidden", "old", "the current password is wrong")
 		return
 	}
 	if len(req.New) < 8 {
-		badRequest(w, "the new password must be at least 8 characters")
+		invalid(w, "new", "the new password must be at least 8 characters")
 		return
 	}
 	hash, err := HashPassword(req.New)
@@ -341,8 +341,12 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Name) == "" {
-		badRequest(w, "name is required")
+	if err := decode(r, &req); err != nil {
+		badRequest(w, err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		invalid(w, "name", "name is required")
 		return
 	}
 	raw, err := randomToken(32)

@@ -1,14 +1,14 @@
 <template>
   <AppModal :title="$t('Create many users')" subtitle="Names are the prefix plus a number." max-width="max-w-2xl" @close="modal.close">
-    <form id="user-batch" class="flex flex-col gap-3" @submit.prevent="submit">
+    <form id="user-batch" class="flex flex-col gap-3" novalidate @submit.prevent="submit()">
       <div class="grid gap-3 sm:grid-cols-3">
-        <FormField label="Prefix">
-          <input v-model="prefix" class="input w-full" :placeholder="$t('trial-')" required>
+        <FormField label="Prefix" name="prefix" required>
+          <input v-model="prefix" class="input w-full" :placeholder="$t('trial-')" autocomplete="off">
         </FormField>
-        <FormField label="How many">
-          <input v-model.number="count" type="number" min="1" max="1000" class="input w-full" required>
+        <FormField label="How many" name="count" required hint="1 to 1000.">
+          <input v-model.number="count" type="number" min="1" max="1000" class="input w-full">
         </FormField>
-        <FormField label="Start at">
+        <FormField label="Start at" name="start">
           <input v-model.number="start" type="number" min="0" class="input w-full">
         </FormField>
       </div>
@@ -32,8 +32,9 @@
     </div>
 
     <template #footer>
+      <FormBanner class="mb-2" />
       <div class="flex justify-end">
-        <button form="user-batch" class="btn btn-primary" :class="{ 'btn-disabled': saving }">
+        <button form="user-batch" class="btn btn-primary" :disabled="saving">
           <span v-if="saving" class="loading loading-spinner loading-xs" /> Create {{ count }} users
         </button>
       </div>
@@ -53,6 +54,14 @@ const prefix = ref('user-')
 const count = ref(10)
 const start = ref(1)
 const form = ref(emptyUserForm())
+const batch = computed(() => ({ ...form.value, prefix: prefix.value, count: count.value, start: start.value }))
+const formApi = useForm(batch, (b) => {
+  const e: Record<string, string | undefined> = userRules(b, 'batch')
+  e.prefix = checkRequired(b.prefix, 'Enter a prefix') ?? (/^[A-Za-z0-9._@-]+$/.test(b.prefix) ? undefined : 'Letters, digits, dot, dash, underscore and @ only')
+  e.count = checkInt(b.count, 1, 1000, 'how many users to create')
+  e.start = checkInt(b.start, 0, undefined, 'a number to start counting from')
+  return problems(e)
+})
 const result = ref<{ name: string, link: string }[] | null>(null)
 
 const { loading: saving, run: submit } = useAsyncAction(async () => {
@@ -62,7 +71,7 @@ const { loading: saving, run: submit } = useAsyncAction(async () => {
   })
   result.value = res.users.map((u, i) => ({ name: u.username, link: res.links[i]! }))
   await refreshNuxtData('users')
-}, 'Users created.')
+}, 'Users created.', formApi)
 
 const { copy } = useClipboard()
 async function copyAll() {

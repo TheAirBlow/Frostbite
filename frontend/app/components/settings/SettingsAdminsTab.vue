@@ -15,19 +15,20 @@
     </div>
 
     <AppModal v-if="edit" :title="edit.id ? edit.username : 'New account'" max-width="max-w-md" @close="edit = null">
-      <form id="admin-form" class="flex flex-col gap-3" @submit.prevent="save">
-        <FormField v-if="!edit.id" label="Username"><input v-model="edit.username" class="input w-full" required></FormField>
-        <FormField v-if="!edit.id" label="Password"><input v-model="edit.password" type="password" class="input w-full" minlength="8" required></FormField>
-        <FormField label="Role"><select v-model="edit.role" class="select w-full"><option value="owner">{{ $t('Owner') }}</option><option value="admin">{{ $t('Admin') }}</option><option value="reseller">{{ $t('Reseller') }}</option></select></FormField>
+      <form id="admin-form" class="flex flex-col gap-3" novalidate @submit.prevent="save()">
+        <FormField v-if="!edit.id" label="Username" name="username" required hint="2 to 32 characters: lowercase letters, digits, dot, dash or underscore."><input v-model="edit.username" class="input w-full" autocomplete="off"></FormField>
+        <FormField v-if="!edit.id" label="Password" name="password" required hint="At least 8 characters."><input v-model="edit.password" type="password" class="input w-full" autocomplete="new-password"></FormField>
+        <FormField label="Role" name="role"><select v-model="edit.role" class="select w-full"><option value="owner">{{ $t('Owner') }}</option><option value="admin">{{ $t('Admin') }}</option><option value="reseller">{{ $t('Reseller') }}</option></select></FormField>
         <template v-if="edit.role === 'reseller'">
-          <FormField label="User quota" hint="Empty means no cap."><input v-model.number="edit.user_quota" type="number" min="0" class="input w-full"></FormField>
-          <FormField label="Traffic to hand out" hint="The total of all their users' limits. Setting it also stops them creating unlimited users."><ByteInput :model-value="edit.traffic_quota ?? 0" @update:model-value="edit.traffic_quota = $event || null" /></FormField>
+          <FormField label="User quota" name="user_quota" hint="Empty means no cap."><input v-model.number="edit.user_quota" type="number" min="0" class="input w-full"></FormField>
+          <FormField label="Traffic to hand out" name="traffic_quota" hint="The total of all their users' limits. Setting it also stops them creating unlimited users."><ByteInput :model-value="edit.traffic_quota ?? 0" @update:model-value="edit.traffic_quota = $event || null" /></FormField>
         </template>
-        <FormField label="Note"><input v-model="edit.note" class="input w-full"></FormField>
+        <FormField label="Note" name="note"><input v-model="edit.note" class="input w-full"></FormField>
         <ToggleRow v-if="edit.id" v-model="edit.enabled" label="Enabled" />
-        <FormField v-if="edit.id" label="Set a new password" hint="Leave empty to keep the current one."><input v-model="edit.password" type="password" class="input w-full" minlength="8" autocomplete="new-password"></FormField>
+        <FormField v-if="edit.id" label="Set a new password" name="password" hint="Leave empty to keep the current one."><input v-model="edit.password" type="password" class="input w-full" autocomplete="new-password"></FormField>
       </form>
       <template #footer>
+        <FormBanner class="mb-2" />
         <div class="flex items-center justify-between">
           <ConfirmButton v-if="edit.id && edit.id !== auth.me?.id" class="btn btn-ghost text-error" confirm-label="Delete?" @confirmed="remove">{{ $t('Delete') }}</ConfirmButton>
           <span v-else />
@@ -47,6 +48,21 @@ const { data: admins, pending, refresh } = useAsyncData('admins', () => useApi<A
 const edit = ref<Draft | null>(null)
 const blank = (): Draft => ({ username: '', password: '', role: 'admin', enabled: true, user_quota: null, traffic_quota: null, note: '' })
 
+const formApi = useForm(edit, (d) => {
+  const e: Record<string, Check> = {}
+  if (!d.id) {
+    e.username = checkRequired(d.username, 'Enter a username') ?? (/^[a-z0-9_.-]{2,32}$/.test(d.username ?? '') ? undefined : 'Use 2 to 32 lowercase letters, digits, dot, dash or underscore')
+    e.password = checkPassword(d.password)
+  }
+  else if (d.password) {
+    e.password = checkPassword(d.password)
+  }
+  if (d.role === 'reseller') {
+    if (d.user_quota !== null && d.user_quota !== undefined && String(d.user_quota) !== '') e.user_quota = checkInt(d.user_quota, 0, 1_000_000, 'a number')
+  }
+  return problems(e)
+})
+
 const { run: save } = useAsyncAction(async () => {
   const d = edit.value!
   if (d.id) {
@@ -58,7 +74,7 @@ const { run: save } = useAsyncAction(async () => {
   }
   edit.value = null
   await refresh()
-}, 'Saved.')
+}, 'Saved.', formApi)
 
 const { run: remove } = useAsyncAction(async () => {
   await useApi(`/admins/${edit.value!.id}`, { method: 'DELETE' })

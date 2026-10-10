@@ -1,6 +1,8 @@
 export interface ApiErrorBody {
   title: string
   detail: string
+  // the request field the problem is in, such as options.t_routes.0.target
+  field?: string
 }
 
 export type Role = 'owner' | 'admin' | 'reseller'
@@ -311,6 +313,8 @@ export interface PresetParam {
   hint?: string
   default?: string
   kind: 'string' | 'number'
+  required?: boolean
+  options?: string[]
 }
 
 export interface Preset {
@@ -597,4 +601,14 @@ export interface Quota {
   traffic_allocated: number
   traffic_used: number
   traffic_quota: number | null
+}
+
+// One place a Turnable tunnel can lead to.
+export interface TurnableRoute {
+  id: string
+  name?: string
+  target: string
+  socket: string
+  transport?: string
+  encryption?: string
 }

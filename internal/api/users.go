@@ -306,14 +306,22 @@ func (s *Server) quota(w http.ResponseWriter, r *http.Request) {
 }
 
 // validate checks the parts of a user request that don't depend on the database.
-func (req *userRequest) validate() string {
-	switch {
-	case req.ResetStrategy != "" && !validReset(req.ResetStrategy):
-		return "reset strategy must be none, day, week, month or year"
-	case req.TrafficLimit < 0 || req.DeviceLimit < 0 || req.IPLimit < 0 || req.DurationDays < 0 || req.OnHoldDays < 0:
-		return "limits can't be negative"
+func (req *userRequest) validate() error {
+	if req.ResetStrategy != "" && !validReset(req.ResetStrategy) {
+		return spec.Invalid("reset_strategy", "reset strategy must be none, day, week, month or year")
 	}
-	return ""
+	for _, f := range []struct {
+		field string
+		v     int64
+	}{{"traffic_limit", req.TrafficLimit}, {"device_limit", int64(req.DeviceLimit)}, {"ip_limit", int64(req.IPLimit)}, {"duration_days", int64(req.DurationDays)}, {"on_hold_days", int64(req.OnHoldDays)}} {
+		if f.v < 0 {
+			return spec.Invalid(f.field, "can't be negative")
+		}
+	}
+	if e := strings.TrimSpace(req.Email); e != "" && !strings.Contains(e, "@") {
+		return spec.Invalid("email", "that does not look like an email address")
+	}
+	return nil
 }
 
 // createUser adds one user.
@@ -326,11 +334,11 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Username = strings.TrimSpace(req.Username)
 	if !userNamePattern.MatchString(req.Username) {
-		badRequest(w, "username must be 2-64 characters: letters, digits, dot, dash, underscore or @")
+		invalid(w, "username", "username must be 2-64 characters: letters, digits, dot, dash, underscore or @")
 		return
 	}
-	if msg := req.validate(); msg != "" {
-		badRequest(w, msg)
+	if err := req.validate(); err != nil {
+		badInput(w, err)
 		return
 	}
 	if err := s.applyPlan(r.Context(), &req); err != nil {
@@ -385,18 +393,18 @@ func (s *Server) createUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Count < 1 || req.Count > 1000 {
-		badRequest(w, "count must be between 1 and 1000")
+		invalid(w, "count", "count must be between 1 and 1000")
 		return
 	}
 	if !userNamePattern.MatchString(req.Prefix + "00") {
-		badRequest(w, "prefix has characters usernames can't contain")
+		invalid(w, "prefix", "prefix has characters usernames can't contain")
 		return
 	}
 	if req.Start == 0 {
 		req.Start = 1
 	}
-	if msg := req.validate(); msg != "" {
-		badRequest(w, msg)
+	if err := req.validate(); err != nil {
+		badInput(w, err)
 		return
 	}
 	if err := s.applyPlan(r.Context(), &req.userRequest); err != nil {
@@ -442,14 +450,14 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		req.Username = cur.Username
 	}
 	if !userNamePattern.MatchString(req.Username) {
-		badRequest(w, "username must be 2-64 characters: letters, digits, dot, dash, underscore or @")
+		invalid(w, "username", "username must be 2-64 characters: letters, digits, dot, dash, underscore or @")
 		return
 	}
 	if req.ResetStrategy == "" {
 		req.ResetStrategy = cur.ResetStrategy
 	}
-	if msg := req.validate(); msg != "" {
-		badRequest(w, msg)
+	if err := req.validate(); err != nil {
+		badInput(w, err)
 		return
 	}
 	if admin, _ := AdminFromContext(r.Context()); admin.Role == RoleReseller && req.TrafficLimit != cur.TrafficLimit {
@@ -466,7 +474,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	case "limited", "expired":
 		status = cur.Status // these are set by the quota loop, not by hand
 	default:
-		badRequest(w, "status must be active, disabled or on_hold")
+		invalid(w, "status", "status must be active, disabled or on_hold")
 		return
 	}
 
@@ -552,7 +560,7 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 		err = s.Queries.ResetUsersTraffic(ctx, ids)
 	case "extend":
 		if req.Days == 0 {
-			badRequest(w, "days is required")
+			invalid(w, "days", "days is required")
 			return
 		}
 		err = s.Queries.ExtendUsers(ctx, db.ExtendUsersParams{Ids: ids, Days: req.Days})

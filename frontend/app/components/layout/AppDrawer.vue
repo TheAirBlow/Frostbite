@@ -3,7 +3,7 @@
     <Transition name="drawer" @after-leave="emit('closed')">
       <div v-if="open" class="fixed inset-0 z-50 flex justify-end">
         <button type="button" class="drawer-backdrop absolute inset-0 bg-black/55 backdrop-blur-[2px]" :aria-label="$t('Close')" @click="emit('close')" />
-        <aside class="drawer-panel bg-base-100 border-base-300 relative flex h-full w-full flex-col border-l shadow-2xl" :class="width">
+        <aside role="dialog" aria-modal="true" class="drawer-panel bg-base-100 border-base-300 relative flex h-dvh w-full flex-col border-l shadow-2xl" :class="width">
           <header class="border-base-300 flex shrink-0 items-start justify-between gap-3 border-b p-4">
             <div class="min-w-0">
               <h3 v-if="title" class="font-display truncate text-xl font-semibold">{{ t(title) }}</h3>
@@ -19,10 +19,10 @@
           <div v-if="$slots.tabs" class="border-base-300 shrink-0 overflow-x-auto border-b px-4">
             <slot name="tabs" />
           </div>
-          <div class="min-h-0 flex-1 overflow-y-auto p-4">
+          <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
             <slot />
           </div>
-          <footer v-if="$slots.footer" class="border-base-300 bg-base-100 shrink-0 border-t p-3">
+          <footer v-if="$slots.footer" class="border-base-300 bg-base-100 shrink-0 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <slot name="footer" />
           </footer>
         </aside>
@@ -32,13 +32,18 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{ open: boolean, title?: string, subtitle?: string, width?: string }>(), {
+const props = withDefaults(defineProps<{ open: boolean, title?: string, subtitle?: string, width?: string }>(), {
   title: '',
   subtitle: '',
   width: 'max-w-xl',
 })
 const emit = defineEmits<{ close: [], closed: [] }>()
 const { t } = useT()
+
+// the page behind must not scroll while the drawer is up
+const locked = useScrollLock(import.meta.client ? document.body : null)
+watch(() => props.open, o => (locked.value = o), { immediate: true })
+onScopeDispose(() => (locked.value = false))
 
 useEventListener(() => (import.meta.client ? window : undefined), 'keydown', (e: KeyboardEvent) => {
   if (e.key === 'Escape' && !document.querySelector('dialog[open]')) emit('close')

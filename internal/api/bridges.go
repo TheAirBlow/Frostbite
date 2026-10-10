@@ -53,6 +53,10 @@ func (s *Server) createBridge(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		var be badBridge
+		if _, _, named := spec.FieldOf(err); named {
+			badInput(w, err)
+			return
+		}
 		if asBad(err, &be) {
 			badRequest(w, be.Error())
 			return
@@ -82,18 +86,18 @@ func asBad(err error, target *badBridge) bool {
 // buildRelay puts a dumb forwarder on the bridge node and advertises it as a host of the target.
 func (s *Server) buildRelay(ctx context.Context, req bridgeRequest) (any, error) {
 	if req.TargetInboundID == nil {
-		return nil, badBridge("pick the inbound the relay should forward to")
+		return nil, spec.Invalid("target_inbound_id", "pick the inbound the relay should forward to")
 	}
 	if req.Port < 1 || req.Port > 65535 {
-		return nil, badBridge("pick a port for the relay")
+		return nil, spec.Invalid("port", "pick a port between 1 and 65535 for the relay")
 	}
 	target, err := s.Queries.GetInbound(ctx, *req.TargetInboundID)
 	if err != nil {
-		return nil, badBridge("the target inbound does not exist")
+		return nil, spec.Invalid("target_inbound_id", "the target inbound does not exist")
 	}
 	bridge, err := s.Queries.GetDaemon(ctx, req.BridgeDaemonID)
 	if err != nil {
-		return nil, badBridge("the bridge daemon does not exist")
+		return nil, spec.Invalid("bridge_daemon_id", "the bridge daemon does not exist")
 	}
 	bridgeNode, err := s.Queries.GetNode(ctx, bridge.NodeID)
 	if err != nil {
@@ -113,10 +117,10 @@ func (s *Server) buildRelay(ctx context.Context, req bridgeRequest) (any, error)
 		Forward:  &spec.Forward{Address: targetAddr, Port: int(target.Port), Network: networkOf(target)},
 		Security: spec.Security{Type: spec.SecurityNone},
 	}
-	if msg, err := s.check(ctx, fwd, 0); err != nil {
+	if verr, err := s.check(ctx, fwd, 0); err != nil {
 		return nil, err
-	} else if msg != "" {
-		return nil, badBridge(msg)
+	} else if verr != nil {
+		return nil, verr
 	}
 	in, err := s.insertInbound(ctx, fwd)
 	if err != nil {
@@ -166,33 +170,33 @@ func (s *Server) addressOf(ctx context.Context, in db.Inbound) (string, error) {
 // buildChain makes the bridge a real server whose traffic leaves through another server.
 func (s *Server) buildChain(ctx context.Context, req bridgeRequest) (any, error) {
 	if req.Preset == "" {
-		return nil, badBridge("pick what the bridge itself should accept")
+		return nil, spec.Invalid("preset", "pick what the bridge itself should accept")
 	}
 	bridge, err := s.Queries.GetDaemon(ctx, req.BridgeDaemonID)
 	if err != nil {
-		return nil, badBridge("the bridge daemon does not exist")
+		return nil, spec.Invalid("bridge_daemon_id", "the bridge daemon does not exist")
 	}
 
 	out := outboundRequest{DaemonID: bridge.ID, Kind: spec.OutProxy, TargetInboundID: req.TargetInboundID, Upstream: req.Upstream, Link: req.Link}
 	out.Tag = "chain-" + slug(req.Name, "exit")
 	if req.TargetInboundID == nil && req.Link == "" && req.Upstream == nil {
-		return nil, badBridge("pick where the chain should exit: one of your inbounds, a share link or a custom upstream")
+		return nil, spec.Invalid("target_inbound_id", "pick where the chain should exit: one of your inbounds, a share link or a custom upstream")
 	}
 
 	// The outbound goes through the same checks as one made by hand.
 	probe := httpRequestStub(ctx)
-	if msg := s.cleanOutbound(probe, &out); msg != "" {
-		return nil, badBridge(msg)
+	if err := s.cleanOutbound(probe, &out); err != nil {
+		return nil, badBridge(err.Error())
 	}
 
 	entry := inboundRequest{DaemonID: bridge.ID, Preset: req.Preset, Params: req.Params, Port: req.Port}
 	if err := s.applyPreset(ctx, &entry); err != nil {
 		return nil, badBridge(err.Error())
 	}
-	if msg, err := s.check(ctx, entry, 0); err != nil {
+	if verr, err := s.check(ctx, entry, 0); err != nil {
 		return nil, err
-	} else if msg != "" {
-		return nil, badBridge(msg)
+	} else if verr != nil {
+		return nil, badBridge(verr.Error())
 	}
 
 	ob, err := s.Queries.CreateOutbound(ctx, db.CreateOutboundParams{

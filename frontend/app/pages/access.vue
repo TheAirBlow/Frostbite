@@ -53,6 +53,7 @@
 import type { Inbound, Plan, Squad } from '~/types/api'
 
 useHead({ title: 'Squads & plans' })
+const route = useRoute()
 const side = useSideDrawer()
 const tab = ref('squads')
 
@@ -60,7 +61,7 @@ const { data: squads, refresh: r1 } = useAsyncData('squads', () => useApi<Squad[
 const { data: plans, refresh: r2 } = useAsyncData('plans', () => useApi<Plan[]>('/plans'))
 const { data: inbounds } = useAsyncData('inbounds', () => useApi<Inbound[]>('/inbounds'))
 
-watch(() => useRoute().query.drawer, (d) => {
+watch(() => route.query.drawer, (d) => {
   if (!d) {
     r1()
     r2()

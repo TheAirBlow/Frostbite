@@ -70,7 +70,7 @@
             <span v-if="u.expire_at" class="text-base-content/50 block text-xs">{{ expiryHint(u) }}</span>
           </p>
           <p class="text-base-content/60 hidden text-xs lg:block">{{ u.online ? t('users.onlineNow') : formatRelative(u.online_at) }}</p>
-          <div class="flex items-center justify-end gap-0.5" @click.stop>
+          <div class="col-span-3 flex items-center justify-end gap-0.5 lg:col-span-1" @click.stop>
             <CopyButton :value="u.sub_url" label="Copy subscription link" />
             <button class="btn btn-ghost btn-xs btn-square" :title="$t('QR code')" @click="qr = u"><Icon name="fa6-solid:qrcode" size="13" /></button>
           </div>

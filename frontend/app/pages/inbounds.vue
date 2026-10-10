@@ -39,7 +39,7 @@
               <Icon name="fa6-solid:arrow-right" size="11" class="text-primary" /><span class="font-medium">{{ i.remark || i.tag }}</span><span class="text-base-content/50 font-mono text-xs">{{ edgeNamesOf(i).join(', ') }}</span>
             </button>
           </div>
-          <p v-else class="text-base-content/50">{{ $t('Nothing is behind this edge yet. Open an inbound on this node and choose it under "Port".') }}</p>
+          <p v-else class="text-base-content/50">{{ $t('Nothing is behind this edge yet. Open an inbound on this node and choose it under "Shared port".') }}</p>
           <p v-if="g.daemon.edge_default" class="text-base-content/50 mt-2 text-xs">{{ $t('Everything else goes to {target}.', { target: g.daemon.edge_default }) }}</p>
         </div>
         <p v-else-if="!g.inbounds.length" class="text-base-content/50 px-4 py-6 text-center text-sm">{{ $t('Nothing here yet. Add an inbound to give this daemon something to serve.') }}</p>
@@ -60,6 +60,7 @@
 import type { Daemon, Inbound, PanelNode } from '~/types/api'
 
 useHead({ title: 'Inbounds' })
+const route = useRoute()
 const side = useSideDrawer()
 
 const { data: nodes, pending: p1 } = useAsyncData('nodes', () => useApi<PanelNode[]>('/nodes'))
@@ -76,7 +77,7 @@ const groups = computed(() => (nodes.value ?? []).flatMap(node => node.daemons.m
   inbounds: (inbounds.value ?? []).filter(i => i.daemon_id === daemon.id),
 }))).filter(g => g.inbounds.length || g.daemon.enabled))
 
-watch(() => useRoute().query.drawer, (d) => {
+watch(() => route.query.drawer, (d) => {
   if (!d) refresh()
 })
 

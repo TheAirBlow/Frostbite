@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"frostbite/internal/db"
+	"frostbite/internal/spec"
 )
 
 // registerAccess registers squad and plan endpoints.
@@ -69,8 +70,12 @@ type squadRequest struct {
 // createSquad adds a squad.
 func (s *Server) createSquad(w http.ResponseWriter, r *http.Request) {
 	var req squadRequest
-	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Name) == "" {
-		badRequest(w, "name is required")
+	if err := decode(r, &req); err != nil {
+		badRequest(w, err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		invalid(w, "name", "name is required")
 		return
 	}
 	sq, err := s.Queries.CreateSquad(r.Context(), db.CreateSquadParams{Name: strings.TrimSpace(req.Name), Note: req.Note})
@@ -95,8 +100,12 @@ func (s *Server) updateSquad(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req squadRequest
-	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Name) == "" {
-		badRequest(w, "name is required")
+	if err := decode(r, &req); err != nil {
+		badRequest(w, err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		invalid(w, "name", "name is required")
 		return
 	}
 	sq, err := s.Queries.UpdateSquad(r.Context(), db.UpdateSquadParams{ID: id, Name: strings.TrimSpace(req.Name), Note: req.Note})
@@ -159,20 +168,26 @@ type planRequest struct {
 }
 
 // clean validates a plan request.
-func (p *planRequest) clean() string {
+func (p *planRequest) clean() error {
 	p.Name = strings.TrimSpace(p.Name)
 	if p.ResetStrategy == "" {
 		p.ResetStrategy = "none"
 	}
-	switch {
-	case p.Name == "":
-		return "name is required"
-	case !validReset(p.ResetStrategy):
-		return "reset strategy must be none, day, week, month or year"
-	case p.TrafficLimit < 0 || p.DurationDays < 0 || p.DeviceLimit < 0 || p.IPLimit < 0:
-		return "limits can't be negative"
+	if p.Name == "" {
+		return spec.Invalid("name", "name is required")
 	}
-	return ""
+	if !validReset(p.ResetStrategy) {
+		return spec.Invalid("reset_strategy", "reset strategy must be none, day, week, month or year")
+	}
+	for _, f := range []struct {
+		field string
+		v     int64
+	}{{"traffic_limit", p.TrafficLimit}, {"duration_days", int64(p.DurationDays)}, {"device_limit", int64(p.DeviceLimit)}, {"ip_limit", int64(p.IPLimit)}} {
+		if f.v < 0 {
+			return spec.Invalid(f.field, "can't be negative")
+		}
+	}
+	return nil
 }
 
 // validReset reports whether s is a known reset strategy.
@@ -201,8 +216,8 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	p, err := s.Queries.CreatePlan(r.Context(), db.CreatePlanParams{
@@ -229,8 +244,8 @@ func (s *Server) updatePlan(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	p, err := s.Queries.UpdatePlan(r.Context(), db.UpdatePlanParams{

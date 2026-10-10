@@ -1,14 +1,14 @@
 <template>
   <Skeleton v-if="!ready" :rows="4" />
-  <form v-else class="flex flex-col gap-4" @submit.prevent="save">
-    <FormField v-if="!id" label="On daemon">
+  <form v-else class="flex flex-col gap-4" novalidate @submit.prevent="save()">
+    <FormField v-if="!id" label="On daemon" name="daemon_id">
       <select v-model.number="form.daemon_id" class="select w-full">
         <optgroup v-for="n in nodes" :key="n.id" :label="`${flag(n.country)} ${n.name}`">
           <option v-for="d in n.daemons" :key="d.id" :value="d.id">{{ d.name }} ({{ coreLabels[d.kind] ?? d.kind }})</option>
         </optgroup>
       </select>
     </FormField>
-    <FormField label="Tag" hint="Rules and the default outbound refer to it by this name."><input v-model="form.tag" class="input w-full font-mono" :placeholder="$t('via-frankfurt')" required></FormField>
+    <FormField label="Tag" name="tag" hint="Rules and the default outbound refer to it by this name." required><input v-model="form.tag" class="input w-full font-mono" :placeholder="$t('via-frankfurt')" autocomplete="off"></FormField>
 
     <div class="flex flex-col gap-1">
       <p class="fieldset-legend">{{ $t('Where does it go?') }}</p>
@@ -16,8 +16,8 @@
     </div>
 
     <template v-if="mode === 'chain'">
-      <FormField label="Exit through" hint="Frostbite creates the credentials itself, so you never handle them.">
-        <select v-model.number="form.target_inbound_id" class="select w-full" required>
+      <FormField label="Exit through" name="target_inbound_id" hint="Frostbite creates the credentials itself, so you never handle them." required>
+        <select v-model.number="form.target_inbound_id" class="select w-full">
           <option :value="null" disabled>{{ $t('Pick an inbound') }}</option>
           <optgroup v-for="n in nodes" :key="n.id" :label="`${flag(n.country)} ${n.name}`">
             <template v-for="d in n.daemons" :key="d.id">
@@ -30,56 +30,56 @@
     </template>
 
     <template v-else-if="mode === 'link'">
-      <FormField label="Share link" hint="vless://, vmess://, trojan://, ss://, hysteria2://, tuic://, anytls:// or socks://">
+      <FormField label="Share link" name="link" required hint="vless://, vmess://, trojan://, ss://, hysteria2://, tuic://, anytls:// or socks://">
         <textarea v-model="form.link" class="textarea w-full font-mono text-xs" rows="3" :placeholder="$t('vless://…')" />
       </FormField>
       <div class="flex items-center gap-2">
-        <button type="button" class="btn btn-sm" :class="{ 'btn-disabled': parsing || !form.link }" @click="parse"><Icon name="fa6-solid:wand-magic-sparkles" size="12" /> {{ $t('Check the link') }}</button>
+        <button type="button" class="btn btn-sm" :disabled="parsing || !form.link" @click="parse"><Icon name="fa6-solid:wand-magic-sparkles" size="12" /> {{ $t('Check the link') }}</button>
         <span v-if="parsed" class="text-success text-xs"><Icon name="fa6-solid:check" size="11" /> {{ protocolLabels[parsed.protocol] ?? parsed.protocol }} · {{ parsed.address }}:{{ parsed.port }}</span>
       </div>
     </template>
 
     <template v-else-if="mode === 'manual' && form.upstream">
       <div class="grid gap-3 sm:grid-cols-3">
-        <FormField label="Protocol"><select v-model="form.upstream.protocol" class="select w-full"><option v-for="p in ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'tuic', 'anytls', 'socks', 'http']" :key="p" :value="p">{{ protocolLabels[p] }}</option></select></FormField>
-        <FormField label="Address" class="sm:col-span-1"><input v-model="form.upstream.address" class="input w-full font-mono" required></FormField>
-        <FormField label="Port"><input v-model.number="form.upstream.port" type="number" class="input w-full" required></FormField>
+        <FormField label="Protocol" name="upstream.protocol"><select v-model="form.upstream.protocol" class="select w-full"><option v-for="p in ['vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'tuic', 'anytls', 'socks', 'http']" :key="p" :value="p">{{ protocolLabels[p] }}</option></select></FormField>
+        <FormField label="Address" name="upstream.address" class="sm:col-span-1" required><input v-model="form.upstream.address" class="input w-full font-mono" autocomplete="off"></FormField>
+        <FormField label="Port" name="upstream.port" required><input v-model.number="form.upstream.port" type="number" min="1" max="65535" class="input w-full"></FormField>
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
-        <FormField v-if="['vless', 'vmess', 'tuic'].includes(form.upstream.protocol)" label="UUID"><input v-model="form.upstream.uuid" class="input w-full font-mono"></FormField>
-        <FormField v-if="['socks', 'http'].includes(form.upstream.protocol)" label="Username"><input v-model="form.upstream.username" class="input w-full"></FormField>
-        <FormField v-if="!['vless', 'vmess'].includes(form.upstream.protocol)" label="Password"><input v-model="form.upstream.password" class="input w-full font-mono"></FormField>
+        <FormField v-if="['vless', 'vmess', 'tuic'].includes(form.upstream.protocol)" label="UUID" name="upstream.uuid" required><input v-model="form.upstream.uuid" class="input w-full font-mono"></FormField>
+        <FormField v-if="['socks', 'http'].includes(form.upstream.protocol)" label="Username" name="upstream.username"><input v-model="form.upstream.username" class="input w-full"></FormField>
+        <FormField v-if="!['vless', 'vmess'].includes(form.upstream.protocol)" label="Password" name="upstream.password" :required="!['socks', 'http'].includes(form.upstream.protocol)"><input v-model="form.upstream.password" class="input w-full font-mono"></FormField>
       </div>
-      <SchemaForm v-model="upTransport" :fields="schema?.transport ?? []" :context="{ protocol: form.upstream.protocol }" />
+      <SchemaForm v-model="upTransport" :fields="schema?.transport ?? []" prefix="upstream.transport." :context="{ protocol: form.upstream.protocol }" />
       <div class="divider my-0">{{ $t('Security') }}</div>
-      <SchemaForm v-model="upSecurity" :fields="clientSecurity" :context="{ protocol: form.upstream.protocol }" />
-      <SchemaForm v-model="upOptions" :fields="optionFields" :context="{ protocol: form.upstream.protocol }" />
+      <SchemaForm v-model="upSecurity" :fields="clientSecurity" prefix="upstream.security." :context="{ protocol: form.upstream.protocol }" />
+      <SchemaForm v-model="upOptions" :fields="optionFields" prefix="upstream.options." :context="{ protocol: form.upstream.protocol }" />
     </template>
 
     <template v-else-if="mode === 'warp'">
       <WarpAccount />
       <Advanced :title="$t('Use a network interface instead')">
-        <FormField label="Network interface" hint="If the node already runs its own WARP interface, name it here and the panel account is ignored.">
+        <FormField label="Network interface" name="interface" hint="If the node already runs its own WARP interface, name it here and the panel account is ignored.">
           <input v-model="form.interface" class="input w-full font-mono" :placeholder="$t('warp')">
         </FormField>
       </Advanced>
     </template>
 
     <template v-else-if="mode === 'direct'">
-      <FormField label="Network interface" hint="Leave empty to use the default route.">
+      <FormField label="Network interface" name="interface" hint="Leave empty to use the default route.">
         <input v-model="form.interface" class="input w-full font-mono" :placeholder="$t('eth1')">
       </FormField>
     </template>
 
     <Advanced>
-      <FormField label="Resolver strategy" hint="Applies to direct style outbounds."><select v-model="form.strategy" class="select w-full"><option value="">{{ $t('Daemon default') }}</option><option v-for="s in ['prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only']" :key="s">{{ s }}</option></select></FormField>
+      <FormField label="Resolver strategy" name="strategy" hint="Applies to direct style outbounds."><select v-model="form.strategy" class="select w-full"><option value="">{{ $t('Daemon default') }}</option><option v-for="s in ['prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only']" :key="s">{{ s }}</option></select></FormField>
     </Advanced>
 
-    <div class="bg-base-100 border-base-300 sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-2 border-t p-3">
+    <FormFooter>
       <ConfirmButton v-if="id" type="button" class="btn btn-ghost text-error" confirm-label="Delete?" @confirmed="remove"><Icon name="fa6-solid:trash" size="13" /> {{ $t('Delete') }}</ConfirmButton>
       <span v-else />
-      <button class="btn btn-primary" :class="{ 'btn-disabled': saving }"><span v-if="saving" class="loading loading-spinner loading-xs" /> {{ id ? 'Save changes' : 'Add outbound' }}</button>
-    </div>
+      <button class="btn btn-primary" :disabled="saving"><span v-if="saving" class="loading loading-spinner loading-xs" /> {{ id ? 'Save changes' : 'Add outbound' }}</button>
+    </FormFooter>
   </form>
 </template>
 
@@ -119,6 +119,22 @@ const optionFields = computed<SchemaField[]>(() => (schema.value?.options ?? [])
 
 const inboundsOf = (daemonId: number) => inbounds.value.filter(i => i.daemon_id === daemonId && i.protocol !== 'forward')
 
+const formApi = useForm(() => (ready.value ? form : null), (f) => {
+  const e: Record<string, Check> = {
+    tag: checkRequired(f.tag, 'Give the outbound a tag') ?? (/\s/.test(f.tag) ? 'A tag can\'t contain spaces' : ['direct', 'block'].includes(f.tag) ? '"direct" and "block" are built in, pick another tag' : undefined),
+  }
+  if (mode.value === 'chain') e.target_inbound_id = f.target_inbound_id ? undefined : 'Pick the inbound to exit through'
+  if (mode.value === 'link') e.link = checkRequired(f.link, 'Paste a share link') ?? (/^[a-z0-9+.-]+:\/\/\S+$/i.test(f.link.trim()) ? undefined : 'That does not look like a share link, such as vless://…')
+  if (mode.value === 'manual' && f.upstream) {
+    const u = f.upstream
+    e['upstream.address'] = checkRequired(u.address, 'Enter the server address') ?? checkHost(u.address)
+    e['upstream.port'] = checkPort(u.port)
+    if (['vless', 'vmess', 'tuic'].includes(u.protocol)) e['upstream.uuid'] = checkRequired(u.uuid, 'A UUID is required') ?? (/^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(u.uuid ?? '') ? undefined : 'That is not a UUID')
+    else if (!['socks', 'http'].includes(u.protocol)) e['upstream.password'] = checkRequired(u.password, 'A password is required')
+  }
+  return problems(e)
+})
+
 onMounted(async () => {
   const [ns, ins, sc, outs] = await Promise.all([useApi<PanelNode[]>('/nodes'), useApi<Inbound[]>('/inbounds'), useApi<Schema>('/schema'), useApi<Outbound[]>('/outbounds')])
   nodes.value = ns
@@ -145,8 +161,15 @@ watch(mode, (m) => {
   parsed.value = null
 })
 
+// a link that does not parse is a mistake in the link field, not a toast
 const { loading: parsing, run: parse } = useAsyncAction(async () => {
-  parsed.value = await useApi<Upstream>('/tools/parse-link', { method: 'POST', body: { link: form.link } })
+  try {
+    parsed.value = await useApi<Upstream>('/tools/parse-link', { method: 'POST', body: { link: form.link } })
+  }
+  catch (e) {
+    parsed.value = null
+    formApi.setError('link', errorMessage(e))
+  }
 })
 
 function body() {
@@ -162,7 +185,7 @@ function body() {
 const { loading: saving, run: save } = useAsyncAction(async () => {
   await useApi(props.id ? `/outbounds/${props.id}` : '/outbounds', { method: props.id ? 'PUT' : 'POST', body: body() })
   emit('done')
-}, 'Saved.')
+}, 'Saved.', formApi)
 
 const { run: remove } = useAsyncAction(async () => {
   await useApi(`/outbounds/${props.id}`, { method: 'DELETE' })

@@ -9,6 +9,8 @@ import (
 	"frostbite/internal/db"
 	"frostbite/internal/share"
 	"frostbite/internal/spec"
+	"net/netip"
+	"regexp"
 )
 
 // registerRouting registers outbound and routing rule endpoints.
@@ -49,40 +51,46 @@ type outboundRequest struct {
 }
 
 // clean validates an outbound request against its daemon's core.
-func (s *Server) cleanOutbound(r *http.Request, req *outboundRequest) string {
+func (s *Server) cleanOutbound(r *http.Request, req *outboundRequest) error {
 	req.Tag = strings.TrimSpace(req.Tag)
 	if req.Tag == "" {
-		return "tag is required"
+		return spec.Invalid("tag", "tag is required")
 	}
 	if req.Tag == "direct" || req.Tag == "block" {
-		return `"direct" and "block" are built in, pick another tag`
+		return spec.Invalid("tag", `"direct" and "block" are built in, pick another tag`)
 	}
 	d, err := s.Queries.GetDaemon(r.Context(), req.DaemonID)
 	if err != nil {
-		return "the daemon does not exist"
+		return spec.Invalid("daemon_id", "the daemon does not exist")
 	}
 	desc := core.Get(d.Kind)
 	if desc == nil || !slices.Contains(desc.Caps.Outbounds, req.Kind) {
-		return "this core can't run a " + req.Kind + " outbound"
+		return spec.Invalid("daemon_id", "this core can't run a %s outbound", req.Kind)
 	}
 
 	if req.Link != "" {
 		up, err := share.ParseLink(req.Link)
 		if err != nil {
-			return err.Error()
+			return spec.Invalid("link", "%s", err)
 		}
 		req.Upstream = &up
 		req.Kind = spec.OutProxy
 	}
 	if req.Kind == spec.OutWarp && req.Interface == "" {
 		if acc, err := s.loadWarp(r.Context()); err != nil || acc == nil {
-			return "register a WARP account first, or name a network interface to use instead"
+			return spec.Invalid("interface", "register a WARP account first, or name a network interface to use instead")
 		}
 	}
 	switch req.Kind {
 	case spec.OutProxy:
 		if req.TargetInboundID == nil && (req.Upstream == nil || req.Upstream.Address == "") {
-			return "a proxy outbound needs a target inbound, a share link or an upstream"
+			if req.Upstream != nil {
+				return spec.Invalid("upstream.address", "the address is required")
+			}
+			return spec.Invalid("target_inbound_id", "a proxy outbound needs a target inbound, a share link or an upstream")
+		}
+		if u := req.Upstream; u != nil && req.TargetInboundID == nil && (u.Port < 1 || u.Port > 65535) {
+			return spec.Invalid("upstream.port", "port must be between 1 and 65535")
 		}
 		if req.TargetInboundID != nil {
 			req.Upstream = nil
@@ -90,7 +98,7 @@ func (s *Server) cleanOutbound(r *http.Request, req *outboundRequest) string {
 	default:
 		req.Upstream, req.TargetInboundID = nil, nil
 	}
-	return ""
+	return nil
 }
 
 // createOutbound adds an outbound to a daemon.
@@ -100,8 +108,8 @@ func (s *Server) createOutbound(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := s.cleanOutbound(r, &req); msg != "" {
-		badRequest(w, msg)
+	if err := s.cleanOutbound(r, &req); err != nil {
+		badInput(w, err)
 		return
 	}
 	o, err := s.Queries.CreateOutbound(r.Context(), db.CreateOutboundParams{
@@ -135,8 +143,8 @@ func (s *Server) updateOutbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.DaemonID = cur.DaemonID
-	if msg := s.cleanOutbound(r, &req); msg != "" {
-		badRequest(w, msg)
+	if err := s.cleanOutbound(r, &req); err != nil {
+		badInput(w, err)
 		return
 	}
 	o, err := s.Queries.UpdateOutbound(r.Context(), db.UpdateOutboundParams{
@@ -194,19 +202,38 @@ type ruleRequest struct {
 }
 
 // cleanRule checks a rule matches on something and goes somewhere.
-func cleanRule(req *ruleRequest) string {
+func cleanRule(req *ruleRequest) error {
 	req.Outbound = strings.TrimSpace(req.Outbound)
 	if req.Outbound == "" {
-		return "pick an outbound for the rule"
+		return spec.Invalid("outbound", "pick an outbound for the rule")
 	}
 	m := req.Match
 	if len(m.InboundTags)+len(m.Users)+len(m.Domain)+len(m.DomainSuffix)+len(m.DomainKw)+len(m.GeoSite)+len(m.GeoIP)+
 		len(m.IPCIDR)+len(m.Port)+len(m.Protocol) == 0 && m.Network == "" {
-		return "a rule needs at least one condition"
+		return spec.Invalid("match", "a rule needs at least one condition")
+	}
+	for i, c := range m.IPCIDR {
+		if _, err := netip.ParsePrefix(c); err != nil {
+			if _, err := netip.ParseAddr(c); err != nil {
+				return spec.Invalid("match.ip_cidr", "%q is not an IP range like 10.0.0.0/8 (entry %d)", c, i+1)
+			}
+		}
+	}
+	for _, p := range m.Port {
+		if !portSpec.MatchString(p) {
+			return spec.Invalid("match.port", "%q is not a port like 443 or a range like 6881-6889", p)
+		}
+	}
+	for _, c := range m.GeoIP {
+		if len(c) != 2 {
+			return spec.Invalid("match.geoip", "%q is not a two letter country code", c)
+		}
 	}
 	req.Match.Outbound = ""
-	return ""
+	return nil
 }
+
+var portSpec = regexp.MustCompile(`^\d{1,5}(-\d{1,5})?$`)
 
 // createRule adds a routing rule.
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {
@@ -215,8 +242,8 @@ func (s *Server) createRule(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := cleanRule(&req); msg != "" {
-		badRequest(w, msg)
+	if err := cleanRule(&req); err != nil {
+		badInput(w, err)
 		return
 	}
 	rule, err := s.Queries.CreateRule(r.Context(), db.CreateRuleParams{
@@ -243,8 +270,8 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := cleanRule(&req); msg != "" {
-		badRequest(w, msg)
+	if err := cleanRule(&req); err != nil {
+		badInput(w, err)
 		return
 	}
 	rule, err := s.Queries.UpdateRule(r.Context(), db.UpdateRuleParams{

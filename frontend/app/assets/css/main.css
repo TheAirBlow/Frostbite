@@ -85,6 +85,14 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* Tailwind v4 preflight no longer sets a pointer cursor on buttons */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 body {
   font-variant-numeric: tabular-nums;
 }
@@ -99,6 +107,17 @@ input, select, textarea {
 .app-icon {
   width: 1em;
   height: 1em;
+}
+
+/* A field with a problem paints daisyUI's own error colour (the same variable .input-error sets). Unlayered, so it
+   also wins over the focus rules. */
+[data-invalid] :is(.input, .select, .textarea, .file-input) {
+  --input-color: var(--color-error);
+}
+[data-invalid] .toggle,
+[data-invalid] .checkbox {
+  --input-color: var(--color-error);
+  border-color: var(--color-error);
 }
 
 /* soft frosted surface used by cards that sit on the ambient glow */

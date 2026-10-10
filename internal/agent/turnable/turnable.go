@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 
 	tconfig "github.com/theairblow/turnable/pkg/config"
@@ -57,8 +58,9 @@ type shape struct {
 
 // member is a user as the server knows them.
 type member struct {
-	label string
-	peers int
+	label  string
+	peers  int
+	routes string // the ids of the routes the user may take, comma separated
 }
 
 // server is one running inbound.
@@ -140,16 +142,23 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 
 // launch starts a server for an inbound.
 func (r *Runtime) launch(in spec.Inbound, sh shape, level string) (*server, error) {
-	host, port, err := sh.Options.TurnableTarget()
-	if err != nil {
-		return nil, err
+	var routes []providers.Route
+	for _, r := range sh.Options.TRoutes {
+		host, port, err := r.Split()
+		if err != nil {
+			return nil, fmt.Errorf("route %s: %w", r.ID, err)
+		}
+		name := r.Name
+		if name == "" {
+			name = in.Tag
+		}
+		routes = append(routes, providers.Route{ID: r.ID, Address: host, Port: port, Socket: r.Socket, Transport: r.Transport, Encryption: r.Encryption, Name: name})
 	}
-	route := providers.Route{
-		ID: spec.TurnableRoute, Address: host, Port: port, Socket: sh.Options.TSocket,
-		Transport: sh.Options.TTransport, Encryption: sh.Options.TEncryption, Name: in.Tag,
+	if len(routes) == 0 {
+		return nil, errors.New("no destination to lead the tunnel to")
 	}
 	s := &server{shape: sh, users: map[string]member{}, labels: map[string]string{}}
-	raw, err := json.Marshal(map[string]any{"routes": []providers.Route{route}, "users": []providers.User{}})
+	raw, err := json.Marshal(map[string]any{"routes": routes, "users": []providers.User{}})
 	if err != nil {
 		return nil, err
 	}
@@ -183,11 +192,16 @@ func (r *Runtime) stop(tag string, s *server) {
 
 // sync makes the server's users match the inbound's, cutting off the ones that are gone.
 func (s *server) sync(in spec.Inbound) {
-	peers := in.Options.TurnableDefaults().TPeers
+	o := in.Options.TurnableDefaults()
+	peers := o.TPeers
+	allowed := make([]string, len(o.TRoutes))
+	for i, r := range o.TRoutes {
+		allowed[i] = r.ID
+	}
 	want := map[string]member{}
 	for _, u := range in.Users {
 		if u.UUID != "" {
-			want[u.UUID] = member{label: u.Name, peers: peers}
+			want[u.UUID] = member{label: u.Name, peers: peers, routes: strings.Join(allowed, ",")}
 		}
 	}
 
@@ -198,7 +212,7 @@ func (s *server) sync(in spec.Inbound) {
 		if old, ok := s.users[id]; ok && old == m {
 			continue
 		}
-		_ = s.prov.AddUser(&providers.User{UUID: id, AllowedRoutes: []string{spec.TurnableRoute}, Type: "relay", Peers: m.peers})
+		_ = s.prov.AddUser(&providers.User{UUID: id, AllowedRoutes: strings.Split(m.routes, ","), Type: "relay", Peers: m.peers})
 	}
 	for id := range s.users {
 		if _, ok := want[id]; !ok {

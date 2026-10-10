@@ -10,6 +10,7 @@
         <button class="btn btn-sm btn-ghost" @click="run('disable', {}, 'Disabled.')"><Icon name="fa6-solid:pause" size="13" /> {{ $t('Disable') }}</button>
         <button class="btn btn-sm btn-ghost" @click="ask('squads')"><Icon name="fa6-solid:layer-group" size="13" /> {{ $t('Squads') }}</button>
         <button class="btn btn-sm btn-ghost" @click="ask('tags')"><Icon name="fa6-solid:tags" size="13" /> {{ $t('Tags') }}</button>
+        <button v-if="!auth.isReseller" class="btn btn-sm btn-ghost" @click="ask('owner')"><Icon name="fa6-solid:user-shield" size="13" /> {{ $t('Owner') }}</button>
         <ConfirmButton class="btn btn-sm btn-ghost text-error" confirm-label="Delete them?" @confirmed="run('delete', {}, 'Deleted.')">
           <Icon name="fa6-solid:trash" size="13" /> {{ $t('Delete') }}
         </ConfirmButton>
@@ -19,71 +20,104 @@
   </Teleport>
 
   <AppModal v-if="dialog" :title="titles[dialog]" max-width="max-w-md" @close="dialog = null">
-    <form id="bulk" class="flex flex-col gap-3" @submit.prevent="submit">
+    <form id="bulk" class="flex flex-col gap-3" novalidate @submit.prevent="submit()">
       <template v-if="dialog === 'extend'">
-        <FormField label="Days to add" hint="Counts from today for users who already expired. Use a negative number to take days away.">
-          <input v-model.number="days" type="number" class="input w-full" required>
+        <FormField label="Days to add" name="days" required hint="Counts from today for users who already expired. Use a negative number to take days away.">
+          <input v-model.number="days" type="number" class="input w-full">
         </FormField>
         <div class="flex gap-1"><button v-for="d in [7, 30, 90, 365]" :key="d" type="button" class="btn btn-xs rounded-full" @click="days = d">{{ d }}d</button></div>
       </template>
       <template v-else-if="dialog === 'add_traffic'">
-        <FormField label="Traffic to add" hint="Only touches users that have a limit. Users who hit it come back online."><ByteInput v-model="bytes" :allow-unlimited="false" /></FormField>
+        <FormField label="Traffic to add" name="bytes" hint="Only touches users that have a limit. Users who hit it come back online."><ByteInput v-model="bytes" :allow-unlimited="false" /></FormField>
       </template>
       <template v-else-if="dialog === 'squads'">
         <Segmented v-model="squadMode" :options="[{ value: 'add_squads', label: 'Add to' }, { value: 'set_squads', label: 'Replace with' }]" />
-        <div class="flex flex-wrap gap-1.5">
-          <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="squadIds.includes(s.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="squadIds = squadIds.includes(s.id) ? squadIds.filter(x => x !== s.id) : [...squadIds, s.id]">{{ s.name }}</button>
-        </div>
+        <FormField label="Squads" name="squad_ids" :hint="squadMode === 'set_squads' ? 'Their current squads are replaced by these.' : 'These are added to their current squads.'">
+          <div class="flex flex-wrap gap-1.5">
+            <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="squadIds.includes(s.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="squadIds = squadIds.includes(s.id) ? squadIds.filter(x => x !== s.id) : [...squadIds, s.id]">{{ s.name }}</button>
+          </div>
+        </FormField>
+      </template>
+      <template v-else-if="dialog === 'owner'">
+        <FormField label="New owner" name="owner_id" hint="The reseller or admin these users belong to from now on. Their quotas apply to them.">
+          <select v-model="ownerId" class="select w-full">
+            <option value="">{{ $t('Nobody, the panel owns them') }}</option>
+            <option v-for="a in admins ?? []" :key="a.id" :value="String(a.id)">{{ a.username }} ({{ a.role }})</option>
+          </select>
+        </FormField>
       </template>
       <template v-else>
-        <FormField label="Tags to add"><ChipInput v-model="tags" :placeholder="$t('Add tags, press enter')" /></FormField>
+        <FormField label="Tags to add" name="tags" required><ChipInput v-model="tags" :placeholder="$t('Add tags, press enter')" /></FormField>
       </template>
     </form>
     <template #footer>
-      <div class="flex justify-end"><button form="bulk" class="btn btn-primary" :class="{ 'btn-disabled': working }">Apply to {{ ids.length }} users</button></div>
+      <FormBanner class="mb-2" />
+      <div class="flex justify-end"><button form="bulk" class="btn btn-primary" :disabled="working">Apply to {{ ids.length }} users</button></div>
     </template>
   </AppModal>
 </template>
 
 <script setup lang="ts">
-import type { Squad } from '~/types/api'
+import type { Admin, Squad } from '~/types/api'
 
 const props = defineProps<{ ids: number[], squads: Squad[] }>()
 const emit = defineEmits<{ clear: [], done: [] }>()
 
-type Dialog = 'extend' | 'add_traffic' | 'squads' | 'tags'
+type Dialog = 'extend' | 'add_traffic' | 'squads' | 'tags' | 'owner'
+const auth = useAuthStore()
 const dialog = ref<Dialog | null>(null)
-const titles: Record<Dialog, string> = { extend: 'Extend validity', add_traffic: 'Add traffic', squads: 'Change squads', tags: 'Add tags' }
+const titles: Record<Dialog, string> = { extend: 'Extend validity', add_traffic: 'Add traffic', squads: 'Change squads', tags: 'Add tags', owner: 'Change owner' }
 
 const days = ref(30)
 const bytes = ref(10 * 1024 ** 3)
 const squadMode = ref('add_squads')
 const squadIds = ref<number[]>([])
 const tags = ref<string[]>([])
+const ownerId = ref('')
+const { data: admins } = useAsyncData('admins', () => useApi<Admin[]>('/admins'), { immediate: !auth.isReseller, server: false })
+
+const dialogState = computed(() => ({ days: days.value, bytes: bytes.value, squad_ids: squadIds.value, tags: tags.value, owner_id: ownerId.value }))
+const formApi = useForm(dialogState, (d) => {
+  switch (dialog.value) {
+    case 'extend': return problems({ days: d.days === 0 ? 'Enter how many days, 1 or more (or a negative number to take days away)' : checkInt(d.days, -36500, 36500, 'a number of days') })
+    case 'add_traffic': return problems({ bytes: d.bytes > 0 ? undefined : 'Enter an amount above zero' })
+    case 'squads': return problems({ squad_ids: d.squad_ids.length || squadMode.value === 'set_squads' ? undefined : 'Pick at least one squad' })
+    case 'tags': return problems({ tags: checkRequired(d.tags, 'Add at least one tag') })
+    default: return {}
+  }
+})
 
 function ask(d: Dialog) {
+  formApi.reset()
   dialog.value = d
 }
 
-const { loading: working, run: exec } = useAsyncAction(async (action: string, extra: Record<string, unknown>, ok?: string) => {
-  await useApi('/users/bulk', { method: 'POST', body: { action, ids: props.ids, ...extra } })
-  void ok
-  emit('done')
-})
-
 const toast = useToast()
+
+// resolves true only when the request went through, so a failure neither claims success nor closes the dialog
+const { loading: working, run: exec } = useAsyncAction(async (action: string, extra: Record<string, unknown>) => {
+  await useApi('/users/bulk', { method: 'POST', body: { action, ids: props.ids, ...extra } })
+  emit('done')
+  return true
+}, undefined, formApi)
+
 async function run(action: string, extra: Record<string, unknown>, message: string) {
-  await exec(action, extra)
-  toast.success(message)
+  if (await exec(action, extra)) {
+    toast.success(message)
+    return true
+  }
+  return false
 }
 
 async function submit() {
+  let done = false
   switch (dialog.value) {
-    case 'extend': await run('extend', { days: days.value }, 'Validity extended.'); break
-    case 'add_traffic': await run('add_traffic', { bytes: bytes.value }, 'Traffic added.'); break
-    case 'squads': await run(squadMode.value, { squad_ids: squadIds.value }, 'Squads updated.'); break
-    case 'tags': await run('add_tags', { tags: tags.value }, 'Tags added.'); break
+    case 'extend': done = await run('extend', { days: days.value }, 'Validity extended.'); break
+    case 'add_traffic': done = await run('add_traffic', { bytes: bytes.value }, 'Traffic added.'); break
+    case 'squads': done = await run(squadMode.value, { squad_ids: squadIds.value }, 'Squads updated.'); break
+    case 'tags': done = await run('add_tags', { tags: tags.value }, 'Tags added.'); break
+    case 'owner': done = await run('set_owner', { owner_id: ownerId.value ? Number(ownerId.value) : null }, 'Owner changed.'); break
   }
-  dialog.value = null
+  if (done) dialog.value = null
 }
 </script>

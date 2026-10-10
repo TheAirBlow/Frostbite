@@ -1,10 +1,9 @@
 <template>
-  <form class="flex flex-col gap-4" @submit.prevent="save">
-    <FormField label="Name"><input v-model="form.name" class="input w-full" :placeholder="$t('Europe')" required></FormField>
-    <FormField label="Note"><input v-model="form.note" class="input w-full"></FormField>
+  <form class="flex flex-col gap-4" novalidate @submit.prevent="save()">
+    <FormField label="Name" name="name" required><input v-model="form.name" class="input w-full" :placeholder="$t('Europe')"></FormField>
+    <FormField label="Note" name="note"><input v-model="form.note" class="input w-full"></FormField>
 
-    <div class="flex flex-col gap-2">
-      <p class="fieldset-legend">{{ $t('Inbounds in this squad') }}</p>
+    <FormField label="Inbounds in this squad" name="inbound_ids" class="gap-2">
       <Skeleton v-if="!nodes" :rows="3" />
       <template v-else>
         <div v-for="n in nodes.filter(n => n.daemons.some(d => byDaemon(d.id).length))" :key="n.id" class="surface p-3">
@@ -26,13 +25,13 @@
           <button type="button" class="btn btn-xs" @click="form.inbound_ids = []">{{ $t('Clear') }}</button>
         </div>
       </template>
-    </div>
+    </FormField>
 
-    <div class="bg-base-100 border-base-300 sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-2 border-t p-3">
+    <FormFooter>
       <ConfirmButton v-if="id" type="button" class="btn btn-ghost text-error" confirm-label="Delete squad?" @confirmed="remove"><Icon name="fa6-solid:trash" size="13" /> {{ $t('Delete') }}</ConfirmButton>
       <span v-else />
-      <button class="btn btn-primary" :class="{ 'btn-disabled': saving }">{{ id ? 'Save changes' : 'Create squad' }}</button>
-    </div>
+      <button class="btn btn-primary" :disabled="saving">{{ id ? 'Save changes' : 'Create squad' }}</button>
+    </FormFooter>
   </form>
 </template>
 
@@ -43,6 +42,7 @@ const props = defineProps<{ id: number | null }>()
 const emit = defineEmits<{ title: [m: { title: string, subtitle?: string }], done: [] }>()
 
 const form = reactive({ name: '', note: '', inbound_ids: [] as number[] })
+const formApi = useForm(form, f => problems({ name: checkRequired(f.name, 'Give the squad a name') }))
 const { data: nodes } = useAsyncData('nodes', () => useApi<PanelNode[]>('/nodes'))
 const { data: inbounds } = useAsyncData('inbounds', () => useApi<Inbound[]>('/inbounds'))
 const byDaemon = (daemonId: number) => (inbounds.value ?? []).filter(i => i.daemon_id === daemonId && i.protocol !== 'forward')
@@ -59,7 +59,7 @@ onMounted(async () => {
 const { loading: saving, run: save } = useAsyncAction(async () => {
   await useApi(props.id ? `/squads/${props.id}` : '/squads', { method: props.id ? 'PUT' : 'POST', body: { ...form } })
   emit('done')
-}, 'Saved.')
+}, 'Saved.', formApi)
 
 const { run: remove } = useAsyncAction(async () => {
   await useApi(`/squads/${props.id}`, { method: 'DELETE' })

@@ -27,7 +27,7 @@
           <p class="text-base-content/50 mt-1 text-xs">Traffic resets: {{ resetLabels[user.reset_strategy]?.toLowerCase() }}<template v-if="user.reset_strategy !== 'none'"> · last {{ formatRelative(user.last_reset) }}</template></p>
         </div>
         <div class="flex flex-wrap gap-1">
-          <button v-for="d in [7, 30, 90, 365]" :key="d" class="btn btn-xs rounded-full" :class="{ 'btn-disabled': busy }" @click="act('extend', { days: d }, `Extended by ${d} days.`)">+{{ d }}d</button>
+          <button v-for="d in [7, 30, 90, 365]" :key="d" class="btn btn-xs rounded-full" :disabled="busy" @click="act('extend', { days: d }, `Extended by ${d} days.`)">+{{ d }}d</button>
         </div>
       </div>
     </Section>
@@ -51,9 +51,9 @@
 
     <Section :title="$t('Actions')">
       <div class="flex flex-wrap gap-2">
-        <button class="btn btn-sm" :class="{ 'btn-disabled': busy }" @click="act('reset_traffic', {}, 'Traffic reset.')"><Icon name="fa6-solid:rotate-left" size="12" /> {{ $t('Reset traffic') }}</button>
-        <button v-if="user.status !== 'disabled'" class="btn btn-sm" :class="{ 'btn-disabled': busy }" @click="act('disable', {}, 'User disabled.')"><Icon name="fa6-solid:pause" size="12" /> {{ $t('Disable') }}</button>
-        <button v-else class="btn btn-sm btn-success" :class="{ 'btn-disabled': busy }" @click="act('enable', {}, 'User enabled.')"><Icon name="fa6-solid:play" size="12" /> {{ $t('Enable') }}</button>
+        <button class="btn btn-sm" :disabled="busy" @click="act('reset_traffic', {}, 'Traffic reset.')"><Icon name="fa6-solid:rotate-left" size="12" /> {{ $t('Reset traffic') }}</button>
+        <button v-if="user.status !== 'disabled'" class="btn btn-sm" :disabled="busy" @click="act('disable', {}, 'User disabled.')"><Icon name="fa6-solid:pause" size="12" /> {{ $t('Disable') }}</button>
+        <button v-else class="btn btn-sm btn-success" :disabled="busy" @click="act('enable', {}, 'User enabled.')"><Icon name="fa6-solid:play" size="12" /> {{ $t('Enable') }}</button>
         <ConfirmButton class="btn btn-sm" confirm-label="New link, old one dies" @confirmed="rotate('sub')"><Icon name="fa6-solid:link-slash" size="12" /> {{ $t('New subscription link') }}</ConfirmButton>
         <ConfirmButton class="btn btn-sm" confirm-label="Everyone reconnects" @confirmed="rotate('secrets')"><Icon name="fa6-solid:key" size="12" /> {{ $t('New credentials') }}</ConfirmButton>
         <ConfirmButton class="btn btn-sm btn-ghost text-error ml-auto" confirm-label="Delete for good?" @confirmed="remove"><Icon name="fa6-solid:trash" size="12" /> {{ $t('Delete') }}</ConfirmButton>

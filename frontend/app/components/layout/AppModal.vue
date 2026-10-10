@@ -1,6 +1,6 @@
 <template>
   <dialog ref="dialog" class="modal" :class="{ 'modal-bottom sm:modal-middle': !fullscreen }" @close="onClose" @cancel.prevent="requestClose">
-    <div class="modal-box flex flex-col gap-0 p-0" :class="[maxWidth, height, fullscreen ? 'h-dvh max-h-dvh w-screen max-w-none rounded-none sm:h-auto sm:max-h-[calc(100vh-5em)] sm:w-11/12 sm:rounded-box' : '']">
+    <div class="modal-box flex flex-col gap-0 p-0" :class="[maxWidth, height, fullscreen ? 'h-dvh max-h-dvh w-screen max-w-none rounded-none sm:h-auto sm:max-h-[calc(100dvh-5em)] sm:w-11/12 sm:rounded-box' : '']">
       <header class="border-base-300 flex shrink-0 items-center justify-between gap-3 border-b px-5 py-4">
         <slot name="header">
           <div class="min-w-0">
@@ -20,7 +20,7 @@
       </footer>
     </div>
     <div class="modal-backdrop">
-      <button type="button" @click="requestClose">{{ $t('close') }}</button>
+      <button type="button" @click="requestClose">{{ $t('Close') }}</button>
     </div>
   </dialog>
 </template>

@@ -121,3 +121,24 @@ export function updateBody(f: UserFormState): Record<string, unknown> {
     squad_ids: f.squad_ids,
   }
 }
+
+// What is wrong with a user form, keyed by the API field. The username checks the batch form skips are optional.
+export function userRules(f: UserFormState, mode: 'create' | 'edit' | 'batch'): Record<string, string> {
+  const e: Record<string, Check> = {}
+  if (mode !== 'batch') e.username = checkUsername(f.username)
+  e.traffic_limit = f.traffic_limit < 0 ? 'It can\'t be negative' : undefined
+  e.device_limit = checkInt(f.device_limit, 0, 1000, 'a number')
+  e.ip_limit = checkInt(f.ip_limit, 0, 1000, 'a number')
+  if (mode === 'edit') {
+    e.on_hold_days = f.status === 'on_hold' ? checkInt(f.on_hold_days, 0, 36500, 'a number of days') : undefined
+  }
+  else {
+    e.duration_days = f.expire_at ? undefined : checkInt(f.duration_days, 0, 36500, 'a number of days')
+  }
+  if (f.expire_at && Number.isNaN(Date.parse(f.expire_at))) e.expire_at = 'That is not a valid date'
+  if (f.email) e.email = checkEmail(f.email)
+  if (f.telegram_id !== null && f.telegram_id !== undefined && String(f.telegram_id) !== '') {
+    e.telegram_id = Number.isInteger(Number(f.telegram_id)) && Number(f.telegram_id) > 0 ? undefined : 'A Telegram id is a positive whole number'
+  }
+  return problems(e)
+}

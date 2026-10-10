@@ -41,6 +41,7 @@
 import type { Outbound, PanelNode, Topology } from '~/types/api'
 
 useHead({ title: 'Bridges' })
+const route = useRoute()
 const drawer = useDrawer()
 const side = useSideDrawer()
 
@@ -51,7 +52,7 @@ const { data: nodes } = useAsyncData('nodes', () => useApi<PanelNode[]>('/nodes'
 const relays = computed(() => (topology.value?.edges ?? []).filter(e => e.kind === 'relay'))
 const chains = computed(() => (outbounds.value ?? []).filter(o => o.kind === 'proxy'))
 
-watch(() => [useRoute().query.panel, useRoute().query.drawer], ([p, d]) => {
+watch(() => [route.query.panel, route.query.drawer], ([p, d]) => {
   if (!p && !d) {
     refresh()
     refreshOuts()

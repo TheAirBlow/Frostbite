@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"frostbite/internal/core"
@@ -84,36 +85,44 @@ func (req inboundRequest) specInbound() spec.Inbound {
 	}
 }
 
+// normalize puts what was typed into the one shape that gets stored.
+func (req *inboundRequest) normalize() {
+	req.Tag = strings.TrimSpace(req.Tag)
+	if req.Protocol == spec.ProtoTurnable {
+		req.Options = req.Options.MigrateTurnable()
+	}
+}
+
 // check validates an inbound against its daemon's core and the other inbounds on that daemon.
-func (s *Server) check(ctx context.Context, req inboundRequest, selfID int64) (string, error) {
+func (s *Server) check(ctx context.Context, req inboundRequest, selfID int64) (verr, err error) {
 	d, err := s.Queries.GetDaemon(ctx, req.DaemonID)
 	if err != nil {
-		return "the daemon does not exist", nil
+		return spec.Invalid("daemon_id", "the daemon does not exist"), nil
 	}
 	desc := core.Get(d.Kind)
 	if desc == nil {
-		return "unknown core " + d.Kind, nil
+		return spec.Invalid("daemon_id", "unknown core %s", d.Kind), nil
 	}
 	if strings.TrimSpace(req.Tag) == "" {
-		return "tag is required", nil
+		return spec.Invalid("tag", "tag is required"), nil
 	}
 	if d.Kind == "edge" {
-		return "an edge daemon shares ports, it does not run inbounds of its own", nil
+		return spec.Invalid("daemon_id", "an edge daemon shares ports, it does not run inbounds of its own"), nil
 	}
-	if msg, err := s.checkEdge(ctx, req, d); err != nil || msg != "" {
-		return msg, err
+	if verr, err := s.checkEdge(ctx, req, d); err != nil || verr != nil {
+		return verr, err
 	}
 
 	if len(req.RawPatch) > 0 && string(req.RawPatch) != "null" {
 		var probe map[string]any
 		if err := json.Unmarshal(req.RawPatch, &probe); err != nil {
-			return "raw patch must be a json object", nil
+			return spec.Invalid("raw_patch", "raw patch must be a json object"), nil
 		}
 	}
 
 	others, err := s.Queries.ListInboundsByDaemon(ctx, req.DaemonID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	all := spec.Daemon{Kind: d.Kind, Inbounds: []spec.Inbound{req.specInbound()}}
 	for _, o := range others {
@@ -126,12 +135,12 @@ func (s *Server) check(ctx context.Context, req inboundRequest, selfID int64) (s
 		})
 	}
 	if err := desc.Caps.Check(all); err != nil {
-		return err.Error(), nil
+		return err, nil
 	}
 	if err := all.Validate(); err != nil {
-		return err.Error(), nil
+		return err, nil
 	}
-	return "", nil
+	return nil, nil
 }
 
 // createInbound adds an inbound, either from a full definition or from a preset.
@@ -148,11 +157,12 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if msg, err := s.check(r.Context(), req, 0); err != nil {
+	req.normalize()
+	if verr, err := s.check(r.Context(), req, 0); err != nil {
 		internalError(w, err)
 		return
-	} else if msg != "" {
-		badRequest(w, msg)
+	} else if verr != nil {
+		badInput(w, verr)
 		return
 	}
 
@@ -217,11 +227,12 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 	}
 	req.DaemonID = cur.DaemonID
 
-	if msg, err := s.check(r.Context(), req, id); err != nil {
+	req.normalize()
+	if verr, err := s.check(r.Context(), req, id); err != nil {
 		internalError(w, err)
 		return
-	} else if msg != "" {
-		badRequest(w, msg)
+	} else if verr != nil {
+		badInput(w, verr)
 		return
 	}
 
@@ -288,16 +299,28 @@ type hostRequest struct {
 }
 
 // clean validates a host request.
-func (h *hostRequest) clean() string {
+func (h *hostRequest) clean() error {
 	h.Address = strings.TrimSpace(h.Address)
 	if h.Port != nil && (*h.Port < 1 || *h.Port > 65535) {
-		return "port must be between 1 and 65535"
+		return spec.Invalid("port", "port must be between 1 and 65535")
 	}
 	if h.Remark == "" {
 		h.Remark = "{node} {protocol}"
 	}
-	return ""
+	if f := h.Fragment; f != nil && f.Enabled {
+		for field, v := range map[string]string{"fragment.length": f.Length, "fragment.interval": f.Interval} {
+			if v != "" && !rangeText.MatchString(v) {
+				return spec.Invalid(field, "use a number or a range like 10-20")
+			}
+		}
+	}
+	if m := h.Mux; m != nil && m.Concurrency < 0 {
+		return spec.Invalid("mux.concurrency", "concurrency cannot be negative")
+	}
+	return nil
 }
+
+var rangeText = regexp.MustCompile(`^\d+(-\d+)?$`)
 
 // createHost adds a host to an inbound.
 func (s *Server) createHost(w http.ResponseWriter, r *http.Request) {
@@ -306,8 +329,8 @@ func (s *Server) createHost(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	h, err := s.Queries.CreateHost(r.Context(), db.CreateHostParams{
@@ -336,8 +359,8 @@ func (s *Server) updateHost(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, err.Error())
 		return
 	}
-	if msg := req.clean(); msg != "" {
-		badRequest(w, msg)
+	if err := req.clean(); err != nil {
+		badInput(w, err)
 		return
 	}
 	h, err := s.Queries.UpdateHost(r.Context(), db.UpdateHostParams{
@@ -384,25 +407,25 @@ func (s *Server) schema(w http.ResponseWriter, r *http.Request) {
 func errNoPreset(id string) error { return fmt.Errorf("unknown preset %q", id) }
 
 // checkEdge validates putting an inbound behind an edge daemon.
-func (s *Server) checkEdge(ctx context.Context, req inboundRequest, d db.Daemon) (string, error) {
+func (s *Server) checkEdge(ctx context.Context, req inboundRequest, d db.Daemon) (verr, err error) {
 	if req.EdgeID == nil {
-		return "", nil
+		return nil, nil
 	}
 	edge, err := s.Queries.GetDaemon(ctx, *req.EdgeID)
 	if err != nil || edge.Kind != "edge" {
-		return "pick an edge daemon to put this inbound behind", nil
+		return spec.Invalid("edge_daemon_id", "pick an edge daemon to put this inbound behind"), nil
 	}
 	if edge.NodeID != d.NodeID {
-		return "the edge daemon has to run on the same node as the inbound", nil
+		return spec.Invalid("edge_daemon_id", "the edge daemon has to run on the same node as the inbound"), nil
 	}
 	if req.specInbound().Network() != "tcp" {
-		return "the edge shares TCP ports, this inbound uses UDP", nil
+		return spec.Invalid("edge_daemon_id", "the edge shares TCP ports, this inbound uses UDP"), nil
 	}
 	if req.Security.Type != spec.SecurityTLS && req.Security.Type != spec.SecurityReality {
-		return "the edge picks inbounds by their TLS server name, so this one needs tls or reality", nil
+		return spec.Invalid("edge_daemon_id", "the edge picks inbounds by their TLS server name, so this one needs tls or reality"), nil
 	}
 	if req.Protocol == spec.ProtoForward {
-		return "relays cannot sit behind an edge", nil
+		return spec.Invalid("edge_daemon_id", "relays cannot sit behind an edge"), nil
 	}
-	return "", nil
+	return nil, nil
 }

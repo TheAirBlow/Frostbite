@@ -11,49 +11,48 @@
     </div>
 
     <!-- 2: details -->
-    <form v-else-if="step === 1" id="bridge-form" class="flex flex-col gap-4" @submit.prevent="step = 2">
-      <FormField label="Where does the bridge run?">
-        <select v-model.number="form.bridge_daemon_id" class="select w-full" required>
+    <form v-else-if="step === 1" id="bridge-form" class="flex flex-col gap-4" novalidate @submit.prevent="review">
+      <FormField label="Where does the bridge run?" name="bridge_daemon_id" required>
+        <select v-model.number="form.bridge_daemon_id" class="select w-full">
           <optgroup v-for="n in nodes" :key="n.id" :label="`${flag(n.country)} ${n.name}`"><option v-for="d in n.daemons" :key="d.id" :value="d.id">{{ d.name }} ({{ coreLabels[d.kind] ?? d.kind }})</option></optgroup>
         </select>
       </FormField>
 
       <template v-if="kind === 'relay'">
-        <FormField label="Forward to" hint="Clients keep using the target's own keys. The relay just passes bytes along.">
-          <select v-model.number="form.target_inbound_id" class="select w-full" required>
+        <FormField label="Forward to" name="target_inbound_id" hint="Clients keep using the target's own keys. The relay just passes bytes along." required>
+          <select v-model.number="form.target_inbound_id" class="select w-full">
             <option :value="null" disabled>{{ $t('Pick an inbound') }}</option>
             <optgroup v-for="n in nodes" :key="n.id" :label="`${flag(n.country)} ${n.name}`">
               <template v-for="d in n.daemons" :key="d.id"><option v-for="i in inboundsOf(d.id)" :key="i.id" :value="i.id" :disabled="d.id === form.bridge_daemon_id">{{ i.remark || i.tag }} · {{ protocolLabels[i.protocol] }}:{{ i.port }}</option></template>
             </optgroup>
           </select>
         </FormField>
-        <FormField label="Listen on port"><input v-model.number="form.port" type="number" min="1" max="65535" class="input w-full" required></FormField>
-        <FormField label="Name in subscriptions" hint="Optional. The default is the target's name plus 'via' and this node."><input v-model="form.name" class="input w-full"></FormField>
+        <FormField label="Listen on port" name="port" required><input v-model.number="form.port" type="number" min="1" max="65535" class="input w-full"></FormField>
+        <FormField label="Name in subscriptions" name="name" hint="Optional. The default is the target's name plus 'via' and this node."><input v-model="form.name" class="input w-full"></FormField>
       </template>
 
       <template v-else>
-        <div class="flex flex-col gap-1">
-          <p class="fieldset-legend">{{ $t('Exit through') }}</p>
+        <FormField label="Exit through">
           <Segmented v-model="exitMode" :options="[{ value: 'inbound', label: 'One of my servers', icon: 'fa6-solid:server' }, { value: 'link', label: 'A share link', icon: 'fa6-solid:paste' }]" />
-        </div>
-        <FormField v-if="exitMode === 'inbound'" label="Exit inbound" hint="The bridge logs in to it with credentials Frostbite creates for it.">
-          <select v-model.number="form.target_inbound_id" class="select w-full" required>
+        </FormField>
+        <FormField v-if="exitMode === 'inbound'" label="Exit inbound" name="target_inbound_id" hint="The bridge logs in to it with credentials Frostbite creates for it." required>
+          <select v-model.number="form.target_inbound_id" class="select w-full">
             <option :value="null" disabled>{{ $t('Pick an inbound') }}</option>
             <optgroup v-for="n in nodes" :key="n.id" :label="`${flag(n.country)} ${n.name}`">
               <template v-for="d in n.daemons" :key="d.id"><option v-for="i in inboundsOf(d.id)" :key="i.id" :value="i.id" :disabled="d.id === form.bridge_daemon_id">{{ i.remark || i.tag }} · {{ protocolLabels[i.protocol] }}:{{ i.port }}</option></template>
             </optgroup>
           </select>
         </FormField>
-        <FormField v-else label="Share link" hint="Any vless, vmess, trojan, ss, hysteria2, tuic or anytls link. Your own, or a provider's."><textarea v-model="form.link" class="textarea w-full font-mono text-xs" rows="3" :placeholder="$t('vless://…')" required /></FormField>
+        <FormField v-else label="Share link" name="link" hint="Any vless, vmess, trojan, ss, hysteria2, tuic or anytls link. Your own, or a provider's." required><textarea v-model="form.link" class="textarea w-full font-mono text-xs" rows="3" :placeholder="$t('vless://…')" /></FormField>
 
-        <FormField label="Name" hint="A short label, used in tags."><input v-model="form.name" class="input w-full" :placeholder="$t('frankfurt')"></FormField>
+        <FormField label="Name" name="name" hint="A short label, used in tags."><input v-model="form.name" class="input w-full" :placeholder="$t('frankfurt')"></FormField>
 
         <div class="divider my-0">{{ $t('What the bridge accepts') }}</div>
         <div class="grid gap-3 sm:grid-cols-2">
-          <FormField label="Recipe">
-            <select v-model="form.preset" class="select w-full" required><option v-for="p in presetChoices" :key="p.id" :value="p.id">{{ p.label }}</option></select>
+          <FormField label="Recipe" name="preset" required>
+            <select v-model="form.preset" class="select w-full"><option v-for="p in presetChoices" :key="p.id" :value="p.id">{{ p.label }}</option></select>
           </FormField>
-          <FormField v-for="p in currentPreset?.params ?? []" :key="p.key" :label="p.label" :hint="p.hint">
+          <FormField v-for="p in currentPreset?.params ?? []" :key="p.key" :label="p.label" :hint="p.hint" :name="`params.${p.key}`">
             <input v-model="values[p.key]" :type="p.kind === 'number' ? 'number' : 'text'" class="input w-full" :placeholder="p.default">
           </FormField>
         </div>
@@ -87,10 +86,11 @@
     </div>
 
     <template v-if="step === 1 || step === 2" #footer>
+      <FormBanner class="mb-2" />
       <div class="flex items-center justify-between gap-2">
         <button type="button" class="btn btn-ghost" @click="step--"><Icon name="fa6-solid:arrow-left" size="12" /> {{ $t('Back') }}</button>
         <button v-if="step === 1" form="bridge-form" class="btn btn-primary">{{ $t('Review') }}</button>
-        <button v-else class="btn btn-primary" :class="{ 'btn-disabled': saving }" @click="create()"><span v-if="saving" class="loading loading-spinner loading-xs" /> {{ $t('Create bridge') }}</button>
+        <button v-else class="btn btn-primary" :disabled="saving" @click="create()"><span v-if="saving" class="loading loading-spinner loading-xs" /> {{ $t('Create bridge') }}</button>
       </div>
     </template>
   </AppModal>
@@ -142,6 +142,30 @@ const sentence = computed(() => {
   return `${bridge} accepts ${currentPreset.value?.label ?? 'connections'} and sends the traffic out through ${exit}.`
 })
 
+// a rejected request sends the person back to the step that holds the field
+const formApi = useForm(form, (f) => {
+  const e: Record<string, Check> = { bridge_daemon_id: f.bridge_daemon_id ? undefined : 'Pick where the bridge runs' }
+  if (kind.value === 'relay') {
+    e.target_inbound_id = f.target_inbound_id ? undefined : 'Pick the inbound to forward to'
+    e.port = checkPort(f.port)
+  }
+  else {
+    if (exitMode.value === 'inbound') e.target_inbound_id = f.target_inbound_id ? undefined : 'Pick the inbound to exit through'
+    else e.link = checkRequired(f.link, 'Paste a share link') ?? (/^[a-z0-9+.-]+:\/\/\S+$/i.test(f.link.trim()) ? undefined : 'That does not look like a share link, such as vless://…')
+    e.preset = f.preset ? undefined : 'Pick a recipe'
+    for (const p of currentPreset.value?.params ?? []) {
+      const v = values.value[p.key]
+      if (p.key === 'port') e[`params.${p.key}`] = checkPort(v || p.default)
+      else if (p.kind === 'number' && v) e[`params.${p.key}`] = checkInt(v, 0, undefined, 'a number')
+    }
+  }
+  return problems(e)
+}, { reveal: () => { if (step.value > 1) step.value = 1 } })
+
+function review() {
+  if (formApi.validate()) step.value = 2
+}
+
 const { loading: saving, run: create } = useAsyncAction(async () => {
   const params: Record<string, unknown> = {}
   for (const p of currentPreset.value?.params ?? []) {
@@ -153,7 +177,7 @@ const { loading: saving, run: create } = useAsyncAction(async () => {
   await useApi('/bridges', { method: 'POST', body })
   await refreshNuxtData()
   step.value = 3
-})
+}, undefined, formApi)
 
 function finish() {
   modal.close()

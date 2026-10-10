@@ -15,6 +15,7 @@ import (
 
 	"frostbite/internal/compose"
 	"frostbite/internal/notify"
+	"frostbite/internal/spec"
 )
 
 // registerSettings registers panel settings endpoints.
@@ -46,16 +47,27 @@ type SubSettings struct {
 
 // brandingOK reports whether a branding value is safe to put on the public user page.
 func (s SubSettings) brandingOK() string {
-	if s.Accent != "" && !hexColor.MatchString(s.Accent) {
-		return "the accent colour must look like #7cc8f7"
-	}
-	if s.LogoURL != "" && !strings.HasPrefix(s.LogoURL, "https://") && !strings.HasPrefix(s.LogoURL, "http://") && !strings.HasPrefix(s.LogoURL, "data:image/") {
-		return "the logo must be an http(s) address or an image data url"
-	}
-	if len(s.LogoURL) > 300_000 || len(s.Footer) > 500 {
-		return "the logo or footer is too large"
+	if err := s.brandingErr(); err != nil {
+		return err.Error()
 	}
 	return ""
+}
+
+// brandingErr is brandingOK with the field the problem is in.
+func (s SubSettings) brandingErr() error {
+	if s.Accent != "" && !hexColor.MatchString(s.Accent) {
+		return spec.Invalid("accent", "the accent colour must look like #7cc8f7")
+	}
+	if s.LogoURL != "" && !strings.HasPrefix(s.LogoURL, "https://") && !strings.HasPrefix(s.LogoURL, "http://") && !strings.HasPrefix(s.LogoURL, "data:image/") {
+		return spec.Invalid("logo_url", "the logo must be an http(s) address or an image data url")
+	}
+	if len(s.LogoURL) > 300_000 {
+		return spec.Invalid("logo_url", "the logo is too large")
+	}
+	if len(s.Footer) > 500 {
+		return spec.Invalid("footer", "the footer can be at most 500 characters")
+	}
+	return nil
 }
 
 // hexColor matches #rgb and #rrggbb.
@@ -112,8 +124,8 @@ func (s *Server) putSubSettings(w http.ResponseWriter, r *http.Request) {
 	if sub.UpdateHours < 1 {
 		sub.UpdateHours = 1
 	}
-	if msg := sub.brandingOK(); msg != "" {
-		badRequest(w, msg)
+	if err := sub.brandingErr(); err != nil {
+		badInput(w, err)
 		return
 	}
 	if err := s.saveSetting(r.Context(), "subscription", sub); err != nil {
@@ -178,7 +190,7 @@ func (s *Server) putNotifications(w http.ResponseWriter, r *http.Request) {
 	for i, h := range set.Webhooks {
 		u, err := url.Parse(h.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			badRequest(w, fmt.Sprintf("webhook %d: the address must be an http or https url", i+1))
+			invalid(w, fmt.Sprintf("webhooks.%d.url", i), "the address must be an http or https url")
 			return
 		}
 		set.Webhooks[i].Events = onlyKnown(h.Events)
@@ -186,13 +198,13 @@ func (s *Server) putNotifications(w http.ResponseWriter, r *http.Request) {
 	set.Telegram.Events = onlyKnown(set.Telegram.Events)
 	for _, p := range set.UsagePercent {
 		if p < 1 || p > 99 {
-			badRequest(w, "usage thresholds are percentages between 1 and 99")
+			invalid(w, "usage_percent", "usage thresholds are percentages between 1 and 99")
 			return
 		}
 	}
 	for _, d := range set.ExpireDays {
 		if d < 1 || d > 15 {
-			badRequest(w, "expiry warnings can be between 1 and 15 days before")
+			invalid(w, "expire_days", "expiry warnings can be between 1 and 15 days before")
 			return
 		}
 	}

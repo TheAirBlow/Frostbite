@@ -174,44 +174,45 @@ type Reality struct {
 
 // Options are protocol specific knobs, each one only used by the protocols that know it.
 type Options struct {
-	Flow        string `json:"flow,omitempty" ui:"label=Flow,options=|xtls-rprx-vision,show=protocol:vless"`
-	Method      string `json:"method,omitempty" ui:"label=Cipher,options=2022-blake3-aes-128-gcm|2022-blake3-aes-256-gcm|2022-blake3-chacha20-poly1305|chacha20-ietf-poly1305|aes-128-gcm|aes-256-gcm,show=protocol:shadowsocks"`
-	ServerKey   string `json:"server_key,omitempty" ui:"label=Server key,show=protocol:shadowsocks"`
-	UpMbps      int    `json:"up_mbps,omitempty" ui:"label=Upload limit (Mbps),show=protocol:hysteria2,advanced"`
-	DownMbps    int    `json:"down_mbps,omitempty" ui:"label=Download limit (Mbps),show=protocol:hysteria2,advanced"`
-	Obfs        string `json:"obfs,omitempty" ui:"label=Obfuscation,options=|salamander,show=protocol:hysteria2,advanced"`
-	ObfsPass    string `json:"obfs_pass,omitempty" ui:"label=Obfuscation password,show=protocol:hysteria2,advanced"`
-	Masquerade  string `json:"masquerade,omitempty" ui:"label=Masquerade URL,show=protocol:hysteria2,advanced"`
-	Ports       string `json:"ports,omitempty" ui:"label=Port hopping range,hint=e.g. 20000-30000,show=protocol:hysteria2|tuic,advanced"`
-	CongestCtl  string `json:"congestion,omitempty" ui:"label=Congestion control,options=bbr|cubic|new_reno,show=protocol:tuic|hysteria2,advanced"`
-	ZeroRTT     bool   `json:"zero_rtt,omitempty" ui:"label=0-RTT,show=protocol:tuic,advanced"`
-	Heartbeat   string `json:"heartbeat,omitempty" ui:"label=Heartbeat,show=protocol:tuic,advanced"`
-	Handshake   string `json:"handshake,omitempty" ui:"label=Handshake server,hint=host:port,show=protocol:shadowtls"`
-	STLSDetour  string `json:"detour,omitempty" ui:"label=Detour inbound tag,show=protocol:shadowtls,advanced"`
-	PaddingSch  string `json:"padding,omitempty" ui:"label=Padding scheme,show=protocol:anytls,advanced"`
-	WGSubnet    string `json:"wg_subnet,omitempty" ui:"label=Tunnel subnet,hint=Each user gets one address from it. Example 10.8.0.0/16,show=protocol:wireguard"`
-	WGPrivate   string `json:"wg_private,omitempty" ui:"label=Server private key,show=protocol:wireguard,advanced"`
-	WGPublic    string `json:"wg_public,omitempty" ui:"label=Server public key,show=protocol:wireguard,advanced"`
-	WGMTU       int    `json:"wg_mtu,omitempty" ui:"label=MTU,show=protocol:wireguard,advanced"`
-	WGDNS       string `json:"wg_dns,omitempty" ui:"label=DNS for clients,show=protocol:wireguard,advanced"`
-	MTMode      string `json:"mt_mode,omitempty" ui:"label=Disguise,options=faketls|padded,show=protocol:mtproto"`
-	MTDomain    string `json:"mt_domain,omitempty" ui:"label=Cover site,hint=A real site Telegram traffic pretends to be. Unrecognised visitors are sent there.,show=protocol:mtproto"`
-	TPlatform   string `json:"t_platform,omitempty" ui:"label=Platform,options=vk.com,show=protocol:turnable"`
-	TCallID     string `json:"t_call_id,omitempty" ui:"label=Call ID,hint=The code at the end of a vk.com/call/join/ link,show=protocol:turnable"`
-	TProto      string `json:"t_proto,omitempty" ui:"label=Tunnel protocol,options=dtls|srtp|none,show=protocol:turnable,advanced"`
-	TTarget     string `json:"t_target,omitempty" ui:"label=Destination,hint=Where the tunnel leads, as ip:port. Usually an inbound on this node.,show=protocol:turnable"`
-	TSocket     string `json:"t_socket,omitempty" ui:"label=Network,options=tcp|udp,show=protocol:turnable"`
-	TTransport  string `json:"t_transport,omitempty" ui:"label=Transport,options=mpath|kcp|sctp|none,show=protocol:turnable,advanced"`
-	TEncryption string `json:"t_encryption,omitempty" ui:"label=Encryption,options=handshake|full,show=protocol:turnable,advanced"`
-	TPeers      int    `json:"t_peers,omitempty" ui:"label=Connections per user,show=protocol:turnable,advanced"`
-	TPrivate    string `json:"t_private,omitempty" ui:"label=Server private key,show=protocol:turnable,advanced"`
-	TPublic     string `json:"t_public,omitempty" ui:"label=Server public key,show=protocol:turnable,advanced"`
-	WGAddress   string `json:"wg_address,omitempty"` // a user's own tunnel address, filled in for client profiles
-	Auth        bool   `json:"auth,omitempty" ui:"label=Require auth,show=protocol:socks|http|mixed"`
-	UDP         bool   `json:"udp,omitempty" ui:"label=Allow UDP,show=protocol:socks|mixed,advanced"`
-	Mux         *Mux   `json:"mux,omitempty"`
-	Fragment    *Frag  `json:"fragment,omitempty"`
-	AcceptProxy bool   `json:"accept_proxy,omitempty"` // expect a PROXY protocol header, set when an edge sits in front
+	Flow        string              `json:"flow,omitempty" ui:"label=Flow,options=|xtls-rprx-vision,show=protocol:vless"`
+	Method      string              `json:"method,omitempty" ui:"label=Cipher,options=2022-blake3-aes-128-gcm|2022-blake3-aes-256-gcm|2022-blake3-chacha20-poly1305|chacha20-ietf-poly1305|aes-128-gcm|aes-256-gcm,show=protocol:shadowsocks"`
+	ServerKey   string              `json:"server_key,omitempty" ui:"label=Server key,show=protocol:shadowsocks"`
+	UpMbps      int                 `json:"up_mbps,omitempty" ui:"label=Upload limit (Mbps),show=protocol:hysteria2,advanced"`
+	DownMbps    int                 `json:"down_mbps,omitempty" ui:"label=Download limit (Mbps),show=protocol:hysteria2,advanced"`
+	Obfs        string              `json:"obfs,omitempty" ui:"label=Obfuscation,options=|salamander,show=protocol:hysteria2,advanced"`
+	ObfsPass    string              `json:"obfs_pass,omitempty" ui:"label=Obfuscation password,show=protocol:hysteria2,advanced"`
+	Masquerade  string              `json:"masquerade,omitempty" ui:"label=Masquerade URL,show=protocol:hysteria2,advanced"`
+	Ports       string              `json:"ports,omitempty" ui:"label=Port hopping range,hint=e.g. 20000-30000,show=protocol:hysteria2|tuic,advanced"`
+	CongestCtl  string              `json:"congestion,omitempty" ui:"label=Congestion control,options=bbr|cubic|new_reno,show=protocol:tuic|hysteria2,advanced"`
+	ZeroRTT     bool                `json:"zero_rtt,omitempty" ui:"label=0-RTT,show=protocol:tuic,advanced"`
+	Heartbeat   string              `json:"heartbeat,omitempty" ui:"label=Heartbeat,show=protocol:tuic,advanced"`
+	Handshake   string              `json:"handshake,omitempty" ui:"label=Handshake server,hint=host:port,show=protocol:shadowtls"`
+	STLSDetour  string              `json:"detour,omitempty" ui:"label=Detour inbound tag,show=protocol:shadowtls,advanced"`
+	PaddingSch  string              `json:"padding,omitempty" ui:"label=Padding scheme,show=protocol:anytls,advanced"`
+	WGSubnet    string              `json:"wg_subnet,omitempty" ui:"label=Tunnel subnet,hint=Each user gets one address from it. Example 10.8.0.0/16,show=protocol:wireguard"`
+	WGPrivate   string              `json:"wg_private,omitempty" ui:"label=Server private key,show=protocol:wireguard,advanced"`
+	WGPublic    string              `json:"wg_public,omitempty" ui:"label=Server public key,show=protocol:wireguard,advanced"`
+	WGMTU       int                 `json:"wg_mtu,omitempty" ui:"label=MTU,show=protocol:wireguard,advanced"`
+	WGDNS       string              `json:"wg_dns,omitempty" ui:"label=DNS for clients,show=protocol:wireguard,advanced"`
+	MTMode      string              `json:"mt_mode,omitempty" ui:"label=Disguise,options=faketls|padded,show=protocol:mtproto"`
+	MTDomain    string              `json:"mt_domain,omitempty" ui:"label=Cover site,hint=A real site Telegram traffic pretends to be. Unrecognised visitors are sent there.,show=protocol:mtproto"`
+	TPlatform   string              `json:"t_platform,omitempty" ui:"label=Platform,options=vk.com,show=protocol:turnable"`
+	TCallID     string              `json:"t_call_id,omitempty" ui:"label=Call ID,hint=The code at the end of a vk.com/call/join/ link,show=protocol:turnable"`
+	TProto      string              `json:"t_proto,omitempty" ui:"label=Tunnel protocol,options=dtls|srtp|none,show=protocol:turnable,advanced"`
+	TRoutes     []TurnableRouteSpec `json:"t_routes,omitempty"` // where the tunnel leads, one entry per destination
+	TTarget     string              `json:"t_target,omitempty"` // older single destination, read as the route "main"
+	TSocket     string              `json:"t_socket,omitempty"`
+	TTransport  string              `json:"t_transport,omitempty"`
+	TEncryption string              `json:"t_encryption,omitempty"`
+	TPeers      int                 `json:"t_peers,omitempty" ui:"label=Connections per user,show=protocol:turnable,advanced"`
+	TPrivate    string              `json:"t_private,omitempty" ui:"label=Server private key,show=protocol:turnable,advanced"`
+	TPublic     string              `json:"t_public,omitempty" ui:"label=Server public key,show=protocol:turnable,advanced"`
+	WGAddress   string              `json:"wg_address,omitempty"` // a user's own tunnel address, filled in for client profiles
+	Auth        bool                `json:"auth,omitempty" ui:"label=Require auth,show=protocol:socks|http|mixed"`
+	UDP         bool                `json:"udp,omitempty" ui:"label=Allow UDP,show=protocol:socks|mixed,advanced"`
+	Mux         *Mux                `json:"mux,omitempty"`
+	Fragment    *Frag               `json:"fragment,omitempty"`
+	AcceptProxy bool                `json:"accept_proxy,omitempty"` // expect a PROXY protocol header, set when an edge sits in front
 }
 
 // Mux is client side multiplexing, advertised to clients through subscriptions.

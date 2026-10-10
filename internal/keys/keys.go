@@ -92,7 +92,10 @@ func SS2022(method string) (string, error) {
 }
 
 // TurnablePair is an ML-KEM-768 key pair, both halves base64 encoded the way Turnable reads them.
-type TurnablePair struct{ Private, Public string }
+type TurnablePair struct {
+	Private string `json:"private"`
+	Public  string `json:"public"`
+}
 
 // Turnable generates the key pair of a Turnable server.
 func Turnable() (TurnablePair, error) {

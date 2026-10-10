@@ -1,9 +1,14 @@
 <template>
   <div class="flex max-w-2xl flex-col gap-4">
     <p class="text-base-content/60 text-sm">{{ $t('Tokens let scripts and bots use the API with your permissions. Send one as the header Authorization: Bearer fbt_…') }}</p>
-    <form class="flex gap-2" @submit.prevent="create">
-      <input v-model="name" class="input input-sm flex-1" :placeholder="$t('What is it for?')" required>
-      <button class="btn btn-sm btn-primary" :class="{ 'btn-disabled': creating }">{{ $t('Create token') }}</button>
+    <form class="flex flex-col gap-2" novalidate @submit.prevent="create()">
+      <div class="flex items-start gap-2">
+        <FormField class="flex-1" label="Name" name="name" required>
+          <input v-model="name" class="input w-full" :placeholder="$t('What is it for?')" autocomplete="off">
+        </FormField>
+        <button class="btn btn-primary mt-9" :disabled="creating">{{ $t('Create token') }}</button>
+      </div>
+      <FormBanner />
     </form>
     <div v-if="fresh" class="alert alert-success alert-soft">
       <Icon name="fa6-solid:key" size="14" />
@@ -26,6 +31,7 @@
 import type { ApiToken } from '~/types/api'
 
 const name = ref('')
+const formApi = useForm(() => ({ name: name.value }), v => problems({ name: checkRequired(v.name, 'Say what the token is for') }))
 const fresh = ref('')
 const { data: tokens, pending, refresh } = useAsyncData('tokens', () => useApi<ApiToken[]>('/auth/tokens'))
 
@@ -34,7 +40,7 @@ const { loading: creating, run: create } = useAsyncAction(async () => {
   fresh.value = t.token ?? ''
   name.value = ''
   await refresh()
-})
+}, undefined, formApi)
 const { run: revoke } = useAsyncAction(async (id: number) => {
   await useApi(`/auth/tokens/${id}`, { method: 'DELETE' })
   await refresh()
