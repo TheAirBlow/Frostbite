@@ -88,7 +88,7 @@ go run ./cmd/panel                              # needs FROSTBITE_DATABASE_URL
 cd frontend && bun install && bun run dev       # proxies /api to :8080
 ```
 
-The panel image is the API only and `frontend/Dockerfile` builds the web interface. Behind nginx or Caddy for TLS, have the proxy set `X-Real-IP`: the frontend trusts only that header (never `X-Forwarded-For`) for the client address.
+The panel image is the API only and `frontend/Dockerfile` builds the web interface. Behind nginx or Caddy for TLS, have the proxy set `X-Real-IP`: the frontend takes the client address only from that header. `FROSTBITE_IP_HEADER` names a different one (`CF-Connecting-IP`, say); for a list such as `X-Forwarded-For` the last entry is used.
 A single binary with the UI embedded is still possible: `bun run generate` in `frontend/`, copy `.output/public` into `internal/frontend/dist` and `go build -tags frontend ./cmd/panel` (the static build needs `ssr: false` and no server routes).
 
 Configuration is `FROSTBITE_*` environment variables (or `data/config.json`), see `internal/common/config.go`.

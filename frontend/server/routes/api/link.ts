@@ -9,7 +9,7 @@ const peers = new Map<string, WebSocket>()
 export default defineWebSocketHandler({
   async upgrade(req) {
     const base = backendBase().replace(/^http/, 'ws')
-    const ip = req.headers.get('x-real-ip')?.trim() || undefined
+    const ip = forwardedIp(req.headers.get(ipHeader))
     const upstream = new WebSocket(`${base}/api/link`, {
       headers: {
         authorization: req.headers.get('authorization') ?? '',
