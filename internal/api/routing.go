@@ -15,16 +15,16 @@ import (
 
 // registerRouting registers outbound and routing rule endpoints.
 func (s *Server) registerRouting(mux authMux) {
-	mux.Admin("GET /outbounds", s.listOutbounds)
-	mux.Admin("POST /outbounds", s.createOutbound)
-	mux.Admin("PUT /outbounds/{id}", s.updateOutbound)
-	mux.Admin("DELETE /outbounds/{id}", s.deleteOutbound)
-	mux.Admin("GET /rules", s.listRules)
-	mux.Admin("POST /rules", s.createRule)
-	mux.Admin("POST /rules/reorder", s.reorderRules)
-	mux.Admin("PUT /rules/{id}", s.updateRule)
-	mux.Admin("DELETE /rules/{id}", s.deleteRule)
-	mux.Admin("GET /rules/presets", s.ruleTemplates)
+	mux.Node("GET /outbounds", nil, s.listOutbounds)
+	mux.Node("POST /outbounds", newOutbound, s.createOutbound)
+	mux.Node("PUT /outbounds/{id}", outboundAtPath, s.updateOutbound)
+	mux.Node("DELETE /outbounds/{id}", outboundAtPath, s.deleteOutbound)
+	mux.Node("GET /rules", nil, s.listRules)
+	mux.Node("POST /rules", newRule, s.createRule)
+	mux.Node("POST /rules/reorder", rulesInBody, s.reorderRules)
+	mux.Node("PUT /rules/{id}", ruleAtPath, s.updateRule)
+	mux.Node("DELETE /rules/{id}", ruleAtPath, s.deleteRule)
+	mux.Node("GET /rules/presets", nil, s.ruleTemplates)
 }
 
 // listOutbounds lists user defined outbounds. direct and block always exist implicitly.
@@ -34,7 +34,18 @@ func (s *Server) listOutbounds(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	ok(w, orEmpty(rows))
+	mine, err := s.daemonFilter(r.Context())
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	out := []db.Outbound{}
+	for _, o := range rows {
+		if mine(o.DaemonID) {
+			out = append(out, o)
+		}
+	}
+	ok(w, out)
 }
 
 // outboundRequest is the JSON body for creating or editing an outbound.
@@ -188,7 +199,19 @@ func (s *Server) listRules(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	ok(w, orEmpty(rows))
+	mine, err := s.daemonFilter(r.Context())
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	global := scopeFrom(r.Context()) == nil
+	out := []db.Rule{}
+	for _, rule := range rows {
+		if rule.DaemonID == nil && global || rule.DaemonID != nil && mine(*rule.DaemonID) {
+			out = append(out, rule)
+		}
+	}
+	ok(w, out)
 }
 
 // ruleRequest is the JSON body for creating or editing a rule.

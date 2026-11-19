@@ -62,7 +62,7 @@ const results = computed(() => {
       await navigateTo('/nodes')
       side.open('node', n.id)
     } }))
-  const base = auth.isReseller ? actions.slice(0, 1) : [...pages, ...actions, ...nodeResults]
+  const base = auth.isReseller ? actions.slice(0, 1) : auth.isNodeAdmin ? [...pages.filter(p => auth.canVisit(p.key.slice(1))), actions[0]!, ...nodeResults] : [...pages, ...actions, ...nodeResults]
   const hits = q ? base.filter(r => r.label.toLowerCase().includes(q) || r.hint.toLowerCase().includes(q)) : base.slice(0, 12)
   return [...hits, ...users.value].slice(0, 14)
 })

@@ -1,12 +1,12 @@
 <template>
   <div>
     <PageHeader :title="t('users.title')" :subtitle="page ? t('users.total', { n: page.total }) : ' '">
-      <button class="btn btn-ghost btn-sm" @click="drawer.open('user-import')"><Icon name="fa6-solid:file-import" size="13" /> {{ t('users.import') }}</button>
-      <button class="btn btn-ghost btn-sm" @click="drawer.open('user-batch')"><Icon name="fa6-solid:users-line" size="13" /> {{ t('users.batch') }}</button>
+      <button class="btn btn-sm" @click="drawer.open('user-import')"><Icon name="fa6-solid:file-import" size="13" /> {{ t('users.import') }}</button>
+      <button class="btn btn-sm" @click="drawer.open('user-batch')"><Icon name="fa6-solid:users-line" size="13" /> {{ t('users.batch') }}</button>
       <button class="btn btn-primary btn-sm" @click="drawer.open('user-create')"><Icon name="fa6-solid:user-plus" size="13" /> {{ t('users.new') }}</button>
     </PageHeader>
 
-    <div v-if="quota && (quota.user_quota || quota.traffic_quota)" class="surface mb-3 flex flex-wrap items-center gap-x-8 gap-y-2 px-4 py-3">
+    <div v-if="quota && (quota.user_quota || quota.traffic_quota)" class="surface mb-4 flex flex-wrap items-center gap-x-8 gap-y-2 px-4 py-3">
       <div v-if="quota.user_quota" class="min-w-40 flex-1"><p class="text-base-content/60 text-xs">{{ $t('Users') }}</p><p class="text-sm font-medium">{{ quota.users }} of {{ quota.user_quota }}</p><progress class="progress progress-primary h-1.5 w-full" :value="quota.users" :max="quota.user_quota" /></div>
       <div v-if="quota.traffic_quota" class="min-w-40 flex-1"><p class="text-base-content/60 text-xs">{{ $t('Traffic handed out') }}</p><p class="text-sm font-medium">{{ formatBytes(quota.traffic_allocated) }} of {{ formatBytes(quota.traffic_quota) }}</p><progress class="progress progress-secondary h-1.5 w-full" :value="quota.traffic_allocated" :max="quota.traffic_quota" /></div>
     </div>
@@ -31,7 +31,7 @@
         <input v-model="tag" class="input input-sm w-28" :placeholder="$t('tag')">
       </div>
       <div class="flex flex-wrap gap-1.5">
-        <button v-for="s in statusChips" :key="s.value" class="btn btn-xs rounded-full" :class="status === s.value ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="status = s.value">
+        <button v-for="s in statusChips" :key="s.value" class="btn btn-xs rounded-full" :class="status === s.value ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="status = s.value">
           {{ s.value ? t(`status.${s.value}`) : t('users.all') }}
         </button>
       </div>
@@ -64,20 +64,21 @@
             </p>
           </div>
           <div class="justify-self-end lg:justify-self-start"><StatusBadge :status="u.status" /></div>
-          <div class="col-span-3 lg:col-span-1"><UsageBar :used="u.traffic_used" :limit="u.traffic_limit" /></div>
+          <div class="col-start-2 lg:col-start-auto"><UsageBar :used="u.traffic_used" :limit="u.traffic_limit" /></div>
           <p class="hidden text-sm lg:block" :class="expiryClass(u)">
             {{ u.expire_at ? formatDate(u.expire_at) : u.status === 'on_hold' ? `${u.on_hold_days || '∞'}d after first use` : t('users.never') }}
             <span v-if="u.expire_at" class="text-base-content/50 block text-xs">{{ expiryHint(u) }}</span>
           </p>
           <p class="text-base-content/60 hidden text-xs lg:block">{{ u.online ? t('users.onlineNow') : formatRelative(u.online_at) }}</p>
-          <div class="col-span-3 flex items-center justify-end gap-0.5 lg:col-span-1" @click.stop>
+          <div class="text-base-content/80 flex items-center justify-end gap-0.5" @click.stop>
             <CopyButton :value="u.sub_url" label="Copy subscription link" />
+            <button class="btn btn-ghost btn-xs btn-square" :title="$t('Connections')" @click="links = u"><Icon name="fa6-solid:link" size="13" /></button>
             <button class="btn btn-ghost btn-xs btn-square" :title="$t('QR code')" @click="qr = u"><Icon name="fa6-solid:qrcode" size="13" /></button>
           </div>
         </div>
       </template>
       <EmptyState v-else icon="fa6-solid:users" :title="filtered ? 'Nobody matches those filters' : 'No users yet'" :text="filtered ? 'Try clearing the search or the status filter.' : 'Create the first one and share their link.'">
-        <button v-if="!filtered" class="btn btn-primary btn-sm" @click="drawer.open('user-create')">{{ $t('New user') }}</button>
+        <button v-if="!filtered" class="btn btn-soft btn-primary btn-sm" @click="drawer.open('user-create')">{{ $t('New user') }}</button>
         <button v-else class="btn btn-sm" @click="clearFilters">{{ $t('Clear filters') }}</button>
       </EmptyState>
     </div>
@@ -92,11 +93,17 @@
 
     <BulkBar v-if="selected.size" :ids="[...selected]" :squads="squads ?? []" @clear="selected = new Set()" @done="onBulkDone" />
 
+    <AppModal v-if="links" :title="links.username" subtitle="Subscription and every connection this user may use" max-width="max-w-xl" @close="links = null">
+      <UserLinks :user="links" />
+    </AppModal>
+
     <AppModal v-if="qr" :title="qr.username" subtitle="Scan with any client" max-width="max-w-sm" @close="qr = null">
       <div class="flex flex-col items-center gap-3">
         <QrCode :value="qr.sub_url" :size="240" />
-        <p class="text-base-content/60 max-w-full text-center font-mono text-xs break-all">{{ qr.sub_url }}</p>
-        <CopyButton :value="qr.sub_url" />
+        <div class="bg-base-100 border-base-300 flex w-full items-center gap-1 rounded-lg border py-1 ps-3 pe-1">
+          <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ qr.sub_url }}</span>
+          <CopyButton :value="qr.sub_url" label="Copy subscription link" />
+        </div>
       </div>
     </AppModal>
   </div>
@@ -122,6 +129,7 @@ const offset = ref(0)
 const pageSize = computed(() => prefs.usersPageSize)
 const selected = ref(new Set<number>())
 const qr = ref<PanelUser | null>(null)
+const links = ref<PanelUser | null>(null)
 
 watch(sort, v => (prefs.usersSort = v))
 watch([debounced, status, squad, tag, sort], () => {

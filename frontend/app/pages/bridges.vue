@@ -16,7 +16,7 @@
           <div v-for="e in relays" :key="e.from_inbound" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3">
             <Icon name="fa6-solid:right-left" size="14" class="text-secondary" />
             <div class="min-w-0 flex-1"><p class="font-medium">{{ nodeName(e.from_node) }} {{ e.label }}</p><p class="text-base-content/50 text-xs">to {{ nodeName(e.to_node) }}</p></div>
-            <button class="btn btn-ghost btn-xs" @click="side.open('inbound', e.from_inbound)">{{ $t('Open') }}</button>
+            <button class="btn btn-xs" @click="side.open('inbound', e.from_inbound)">{{ $t('Open') }}</button>
             <ConfirmButton class="btn btn-ghost btn-xs text-error" confirm-label="Remove?" @confirmed="removeInbound(e.from_inbound!)"><Icon name="fa6-solid:trash" size="12" /></ConfirmButton>
           </div>
         </div>
@@ -28,7 +28,7 @@
           <div v-for="o in chains" :key="o.id" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3">
             <Icon name="fa6-solid:link" size="14" class="text-primary" />
             <div class="min-w-0 flex-1"><p class="font-medium">{{ o.tag }}</p><p class="text-base-content/50 text-xs">{{ daemonName(o.daemon_id) }} → {{ o.target_inbound_id ? 'your inbound' : `${o.upstream?.address}:${o.upstream?.port}` }}</p></div>
-            <button class="btn btn-ghost btn-xs" @click="side.open('outbound', o.id)">{{ $t('Open') }}</button>
+            <button class="btn btn-xs" @click="side.open('outbound', o.id)">{{ $t('Open') }}</button>
           </div>
         </div>
         <p v-else class="text-base-content/50 text-sm">{{ $t('No chains.') }}</p>

@@ -44,6 +44,8 @@ type Runtime struct {
 	servers map[string]*server
 	last    spec.Daemon
 
+	onDown, onStart func()
+
 	usageMu sync.Mutex
 	usage   map[string]*link.Usage
 
@@ -83,6 +85,32 @@ func New() *Runtime {
 		logs: logs.NewRing(1000), dcs: dcAddrs,
 		servers: map[string]*server{}, usage: map[string]*link.Usage{}, live: map[*session]struct{}{},
 	}
+}
+
+// SetHooks registers callbacks for the guard, see agent.Supervised.
+func (r *Runtime) SetHooks(down, starting func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onDown, r.onStart = down, starting
+}
+
+// Alive reports whether any listener is up.
+func (r *Runtime) Alive() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.servers) > 0
+}
+
+// Halt stops every listener and drops every connection until the next Apply or Restart.
+func (r *Runtime) Halt() {
+	r.mu.Lock()
+	for tag, s := range r.servers {
+		s.stop()
+		delete(r.servers, tag)
+	}
+	r.mu.Unlock()
+	r.dropAll()
+	r.logf("halted by the guard, staying off until the panel pushes a config or asks for a restart")
 }
 
 // Kind is the core this runtime drives.
@@ -126,6 +154,9 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 			s.stop()
 			r.kick(in.Tag, nil)
 		}
+		if r.onStart != nil {
+			r.onStart()
+		}
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			failed = append(failed, fmt.Errorf("%s: %w", addr, err))
@@ -144,6 +175,9 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 			delete(r.servers, tag)
 			r.logf("stopped %s", s.addr)
 		}
+	}
+	if len(failed) > 0 && len(r.servers) == 0 && r.onDown != nil {
+		r.onDown()
 	}
 	return errors.Join(failed...)
 }

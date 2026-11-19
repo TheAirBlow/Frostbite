@@ -92,3 +92,25 @@ func TestUniqueViolationsPointAtTheField(t *testing.T) {
 		}
 	}
 }
+
+func TestTurnableClientsAreRecognisedByUserAgent(t *testing.T) {
+	set := defaultSub()
+	for ua, want := range map[string]bool{
+		"Turnable-Android/1.2.0 (Android 14)": true,
+		"turnable-android":                    true,
+		"v2rayNG/1.9":                         false,
+		"":                                    false,
+	} {
+		if got := set.isTurnableClient(ua); got != want {
+			t.Errorf("%q: want %v, got %v", ua, want, got)
+		}
+	}
+	set.TurnableAgents = []string{"Turnable-Android", " Turnable-iOS "}
+	if !set.isTurnableClient("Turnable-iOS/2.0") {
+		t.Error("the list is meant to grow: a second entry must match too")
+	}
+	set.TurnableAgents = nil
+	if set.isTurnableClient("Turnable-Android") {
+		t.Error("an empty list turns the behaviour off")
+	}
+}

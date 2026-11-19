@@ -37,15 +37,15 @@
           <span class="text-base-content/60 text-sm">{{ $t('days') }}</span>
         </div>
         <div class="mt-1 flex flex-wrap gap-1">
-          <button v-for="d in [7, 30, 90, 180, 365]" :key="d" type="button" class="btn btn-xs btn-ghost bg-base-200 rounded-full" @click="form.duration_days = d; form.expire_at = ''">{{ d }}d</button>
-          <button type="button" class="btn btn-xs btn-ghost bg-base-200 rounded-full" @click="form.duration_days = 0; form.expire_at = ''">{{ $t('never') }}</button>
+          <button v-for="d in [7, 30, 90, 180, 365]" :key="d" type="button" class="btn btn-xs rounded-full" @click="form.duration_days = d; form.expire_at = ''">{{ d }}d</button>
+          <button type="button" class="btn btn-xs rounded-full" @click="form.duration_days = 0; form.expire_at = ''">{{ $t('never') }}</button>
         </div>
       </FormField>
 
       <FormField v-else label="Expires on" name="expire_at">
         <div class="flex items-center gap-2">
           <input v-model="form.expire_at" type="date" class="input w-full">
-          <button v-if="form.expire_at" type="button" class="btn btn-ghost btn-sm" @click="form.expire_at = ''">{{ $t('Never') }}</button>
+          <button v-if="form.expire_at" type="button" class="btn btn-sm" @click="form.expire_at = ''">{{ $t('Never') }}</button>
         </div>
       </FormField>
     </div>
@@ -58,7 +58,7 @@
 
     <FormField label="Squads" name="squad_ids" hint="Which inbounds this user can connect to.">
       <div v-if="squads.length" class="flex flex-wrap gap-1.5">
-        <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="form.squad_ids.includes(s.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="toggleSquad(s.id)">
+        <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="form.squad_ids.includes(s.id) ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="toggleSquad(s.id)">
           <Icon :name="form.squad_ids.includes(s.id) ? 'fa6-solid:check' : 'fa6-solid:plus'" size="10" /> {{ s.name }}
         </button>
       </div>

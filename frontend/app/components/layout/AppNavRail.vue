@@ -68,7 +68,7 @@ const all: NavItem[] = [
   { to: '/subscriptions', key: 'nav.subscriptions', icon: 'fa6-solid:rss', kbd: 'S' },
 ]
 
-const items = computed(() => (auth.isReseller ? all.filter(i => i.to === '/users') : all))
+const items = computed(() => all.filter(i => auth.canVisit(i.to)))
 const mobileMain = computed(() => items.value.slice(0, 4))
 const mobileMore = computed(() => items.value.slice(4))
 

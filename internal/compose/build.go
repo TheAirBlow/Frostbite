@@ -65,8 +65,13 @@ func (s *Snapshot) inbound(in db.Inbound, extra []spec.User) spec.Inbound {
 		Transport: in.Transport, Security: in.Security, Options: in.Options, Sniffing: in.Sniffing,
 		Forward: in.Forward, RawPatch: in.RawPatch,
 	}
+	if in.Protocol == spec.ProtoTurnable {
+		out.Options = s.ResolveRoutes(out.Options)
+	}
 	if a := out.Security.ACME; a != nil && out.Security.Type == spec.SecurityTLS {
 		out.Security.CertPath, out.Security.KeyPath = a.Paths(spec.ACMEDir)
+	} else if c := out.Security.Caddy; c != nil && out.Security.Type == spec.SecurityTLS {
+		out.Security.CertPath, out.Security.KeyPath = c.Paths(spec.CaddyCopyDir)
 	}
 	if in.EdgeDaemonID != nil {
 		// the edge owns the public port, so the inbound moves to a private one behind it
@@ -276,6 +281,8 @@ func edgeNames(in db.Inbound) []string {
 		return sec.Reality.ServerNames
 	case sec.ACME != nil && sec.ACME.Domain != "":
 		return []string{sec.ACME.Domain}
+	case sec.Caddy != nil && sec.Caddy.Domain != "":
+		return []string{sec.Caddy.Domain}
 	case sec.SNI != "":
 		return []string{sec.SNI}
 	}

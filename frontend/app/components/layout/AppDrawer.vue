@@ -6,7 +6,7 @@
         <aside role="dialog" aria-modal="true" class="drawer-panel bg-base-100 border-base-300 relative flex h-dvh w-full flex-col border-l shadow-2xl" :class="width">
           <header class="border-base-300 flex shrink-0 items-start justify-between gap-3 border-b p-4">
             <div class="min-w-0">
-              <h3 v-if="title" class="font-display truncate text-xl font-semibold">{{ t(title) }}</h3>
+              <h2 v-if="title" class="font-display truncate text-xl font-semibold">{{ t(title) }}</h2>
               <p v-if="subtitle" class="text-base-content/60 truncate text-sm">{{ t(subtitle) }}</p>
             </div>
             <div class="flex shrink-0 items-center gap-1">

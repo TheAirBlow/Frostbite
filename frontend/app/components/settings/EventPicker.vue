@@ -2,8 +2,8 @@
   <div class="flex flex-col gap-1">
     <p class="fieldset-legend">{{ label }}</p>
     <div class="flex flex-wrap gap-1.5">
-      <button type="button" class="btn btn-xs rounded-full" :class="!model.length ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="model = []">{{ $t('Everything') }}</button>
-      <button v-for="e in events" :key="e.id" type="button" class="btn btn-xs rounded-full" :class="model.includes(e.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="toggle(e.id)">{{ e.label }}</button>
+      <button type="button" class="btn btn-xs rounded-full" :class="!model.length ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="model = []">{{ $t('Everything') }}</button>
+      <button v-for="e in events" :key="e.id" type="button" class="btn btn-xs rounded-full" :class="model.includes(e.id) ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="toggle(e.id)">{{ e.label }}</button>
     </div>
   </div>
 </template>

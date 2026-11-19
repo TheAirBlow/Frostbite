@@ -7,7 +7,7 @@
     <template #footer>
       <FormBanner class="mb-2" />
       <div class="flex items-center justify-between gap-2">
-        <button type="button" class="btn btn-ghost btn-sm" @click="modal.open('user-batch')">
+        <button type="button" class="btn btn-sm" @click="modal.open('user-batch')">
           <Icon name="fa6-solid:users-line" size="13" /> {{ $t('Create many at once') }}
         </button>
         <button form="user-create" class="btn btn-primary" :disabled="saving">

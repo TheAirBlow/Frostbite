@@ -27,6 +27,10 @@
       </template>
     </FormField>
 
+    <FormField v-if="id" label="Members" name="members" hint="Adding or removing someone changes only this squad." class="gap-2">
+      <SquadMembers :squad-id="id" />
+    </FormField>
+
     <FormFooter>
       <ConfirmButton v-if="id" type="button" class="btn btn-ghost text-error" confirm-label="Delete squad?" @confirmed="remove"><Icon name="fa6-solid:trash" size="13" /> {{ $t('Delete') }}</ConfirmButton>
       <span v-else />

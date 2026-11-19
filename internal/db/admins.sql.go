@@ -11,6 +11,30 @@ import (
 	"time"
 )
 
+const addAdminNodes = `-- name: AddAdminNodes :exec
+INSERT INTO admin_nodes (admin_id, node_id) SELECT $1::bigint, unnest($2::bigint[])
+ON CONFLICT DO NOTHING
+`
+
+type AddAdminNodesParams struct {
+	AdminID int64   `db:"admin_id" json:"admin_id"`
+	NodeIds []int64 `db:"node_ids" json:"node_ids"`
+}
+
+func (q *Queries) AddAdminNodes(ctx context.Context, arg AddAdminNodesParams) error {
+	_, err := q.db.Exec(ctx, addAdminNodes, arg.AdminID, arg.NodeIds)
+	return err
+}
+
+const clearAdminNodes = `-- name: ClearAdminNodes :exec
+DELETE FROM admin_nodes WHERE admin_id = $1
+`
+
+func (q *Queries) ClearAdminNodes(ctx context.Context, adminID int64) error {
+	_, err := q.db.Exec(ctx, clearAdminNodes, adminID)
+	return err
+}
+
 const countAdmins = `-- name: CountAdmins :one
 SELECT count(*) FROM admins
 `
@@ -304,6 +328,54 @@ func (q *Queries) ListAPITokens(ctx context.Context, adminID int64) ([]ApiToken,
 	return items, nil
 }
 
+const listAdminNodeIDs = `-- name: ListAdminNodeIDs :many
+SELECT node_id FROM admin_nodes WHERE admin_id = $1 ORDER BY node_id
+`
+
+func (q *Queries) ListAdminNodeIDs(ctx context.Context, adminID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listAdminNodeIDs, adminID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var node_id int64
+		if err := rows.Scan(&node_id); err != nil {
+			return nil, err
+		}
+		items = append(items, node_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAdminNodes = `-- name: ListAdminNodes :many
+SELECT admin_id, node_id FROM admin_nodes ORDER BY admin_id, node_id
+`
+
+func (q *Queries) ListAdminNodes(ctx context.Context) ([]AdminNode, error) {
+	rows, err := q.db.Query(ctx, listAdminNodes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdminNode
+	for rows.Next() {
+		var i AdminNode
+		if err := rows.Scan(&i.AdminID, &i.NodeID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAdmins = `-- name: ListAdmins :many
 SELECT id, username, password_hash, role, enabled, user_quota, traffic_quota, note, created_at FROM admins ORDER BY id
 `
@@ -397,6 +469,81 @@ func (q *Queries) ListSettings(ctx context.Context) ([]Setting, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const listSquadNodes = `-- name: ListSquadNodes :many
+SELECT DISTINCT si.squad_id, d.node_id FROM squad_inbounds si
+JOIN inbounds i ON i.id = si.inbound_id JOIN daemons d ON d.id = i.daemon_id
+`
+
+type ListSquadNodesRow struct {
+	SquadID int64 `db:"squad_id" json:"squad_id"`
+	NodeID  int64 `db:"node_id" json:"node_id"`
+}
+
+func (q *Queries) ListSquadNodes(ctx context.Context) ([]ListSquadNodesRow, error) {
+	rows, err := q.db.Query(ctx, listSquadNodes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSquadNodesRow
+	for rows.Next() {
+		var i ListSquadNodesRow
+		if err := rows.Scan(&i.SquadID, &i.NodeID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserNodes = `-- name: ListUserNodes :many
+SELECT DISTINCT us.user_id, d.node_id FROM user_squads us
+JOIN squad_inbounds si ON si.squad_id = us.squad_id JOIN inbounds i ON i.id = si.inbound_id JOIN daemons d ON d.id = i.daemon_id
+WHERE us.user_id = ANY($1::bigint[])
+`
+
+type ListUserNodesRow struct {
+	UserID int64 `db:"user_id" json:"user_id"`
+	NodeID int64 `db:"node_id" json:"node_id"`
+}
+
+func (q *Queries) ListUserNodes(ctx context.Context, ids []int64) ([]ListUserNodesRow, error) {
+	rows, err := q.db.Query(ctx, listUserNodes, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserNodesRow
+	for rows.Next() {
+		var i ListUserNodesRow
+		if err := rows.Scan(&i.UserID, &i.NodeID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeUserSquads = `-- name: RemoveUserSquads :exec
+DELETE FROM user_squads WHERE user_id = $1 AND squad_id = ANY($2::bigint[])
+`
+
+type RemoveUserSquadsParams struct {
+	UserID   int64   `db:"user_id" json:"user_id"`
+	SquadIds []int64 `db:"squad_ids" json:"squad_ids"`
+}
+
+func (q *Queries) RemoveUserSquads(ctx context.Context, arg RemoveUserSquadsParams) error {
+	_, err := q.db.Exec(ctx, removeUserSquads, arg.UserID, arg.SquadIds)
+	return err
 }
 
 const setSetting = `-- name: SetSetting :exec

@@ -4,7 +4,7 @@
     <div v-if="!id && templates.length" class="flex flex-col gap-1">
       <p class="fieldset-legend">{{ $t('Start from a recipe') }}</p>
       <div class="flex flex-wrap gap-1.5">
-        <button v-for="t in templates" :key="t.id" type="button" class="btn btn-xs rounded-full btn-ghost bg-base-200" :title="t.description" @click="useTemplate(t)">{{ t.label }}</button>
+        <button v-for="t in templates" :key="t.id" type="button" class="btn btn-xs rounded-full" :title="t.description" @click="useTemplate(t)">{{ t.label }}</button>
       </div>
     </div>
 
@@ -33,7 +33,7 @@
     <FormField label="Countries (GeoIP)" name="match.geoip" hint="Two letter codes of where the destination IP is."><ChipInput v-model="match.geoip" :placeholder="$t('ru')" :check="checkCountry" /></FormField>
     <FormField label="Ports" name="match.port"><ChipInput v-model="match.port" :placeholder="$t('443 or 6881-6889')" :check="checkPortRange" /></FormField>
     <FormField label="Detected protocol" name="match.protocol" hint="Needs sniffing on the inbound.">
-      <div class="flex flex-wrap gap-1.5"><button v-for="p in ['bittorrent', 'quic', 'http', 'tls', 'dns', 'stun']" :key="p" type="button" class="btn btn-xs rounded-full" :class="(match.protocol ?? []).includes(p) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="toggleProto(p)">{{ p }}</button></div>
+      <div class="flex flex-wrap gap-1.5"><button v-for="p in ['bittorrent', 'quic', 'http', 'tls', 'dns', 'stun']" :key="p" type="button" class="btn btn-xs rounded-full" :class="(match.protocol ?? []).includes(p) ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="toggleProto(p)">{{ p }}</button></div>
     </FormField>
 
     <Advanced :title="$t('More conditions')">

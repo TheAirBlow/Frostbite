@@ -11,9 +11,9 @@ import (
 // registerAccess registers squad and plan endpoints.
 func (s *Server) registerAccess(mux authMux) {
 	mux.Auth("GET /squads", s.listSquads)
-	mux.Admin("POST /squads", s.createSquad)
-	mux.Admin("PUT /squads/{id}", s.updateSquad)
-	mux.Admin("DELETE /squads/{id}", s.deleteSquad)
+	mux.Node("POST /squads", squadInbounds, s.createSquad)
+	mux.Node("PUT /squads/{id}", squadAtPath, s.updateSquad)
+	mux.Node("DELETE /squads/{id}", squadAtPath, s.deleteSquad)
 	mux.Auth("GET /plans", s.listPlans)
 	mux.Admin("POST /plans", s.createPlan)
 	mux.Admin("PUT /plans/{id}", s.updatePlan)
@@ -53,9 +53,12 @@ func (s *Server) listSquads(w http.ResponseWriter, r *http.Request) {
 	for _, m := range members {
 		users[m.SquadID]++
 	}
-	out := make([]squadResponse, len(squads))
-	for i, sq := range squads {
-		out[i] = squadResponse{Squad: sq, InboundIDs: orEmpty(inbounds[sq.ID]), Users: users[sq.ID]}
+	sc := scopeFrom(r.Context())
+	out := make([]squadResponse, 0, len(squads))
+	for _, sq := range squads {
+		if sc.ownsSquad(sq.ID) {
+			out = append(out, squadResponse{Squad: sq, InboundIDs: orEmpty(inbounds[sq.ID]), Users: users[sq.ID]})
+		}
 	}
 	ok(w, out)
 }

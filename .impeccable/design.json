@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-19T00:00:00Z",
+  "title": "Design System: Frostbite",
+  "extensions": {
+    "colorMeta": {
+      "night-base": {"role": "neutral", "displayName": "Night Base", "canonical": "oklch(21% 0.032 258)"},
+      "night-surface": {"role": "neutral", "displayName": "Night Surface", "canonical": "oklch(17.5% 0.03 258)"},
+      "night-edge": {"role": "neutral", "displayName": "Night Edge", "canonical": "oklch(14% 0.026 258)"},
+      "frost-text": {"role": "neutral", "displayName": "Frost Text", "canonical": "oklch(92% 0.014 240)"},
+      "ice-cyan": {"role": "primary", "displayName": "Ice Cyan", "canonical": "oklch(79% 0.125 228)", "tonalRamp": ["oklch(20% 0.04 228)","oklch(30% 0.07 228)","oklch(42% 0.1 228)","oklch(54% 0.12 228)","oklch(66% 0.125 228)","oklch(79% 0.125 228)","oklch(88% 0.07 228)","oklch(95% 0.03 228)"]},
+      "aurora-violet": {"role": "secondary", "displayName": "Aurora Violet", "canonical": "oklch(73% 0.14 288)"},
+      "glacier-teal": {"role": "tertiary", "displayName": "Glacier Teal", "canonical": "oklch(81% 0.115 182)"}
+    },
+    "shadows": [
+      {"name": "overlay", "value": "var(--tw-shadow-2xl)", "purpose": "Drawers and modals."},
+      {"name": "menu", "value": "var(--tw-shadow-xl)", "purpose": "Dropdowns and command palette."}
+    ],
+    "motion": [
+      {"name": "pop", "value": "opacity, transform 120ms ease", "purpose": "Menus."},
+      {"name": "fade", "value": "opacity 150ms ease", "purpose": "Overlays."},
+      {"name": "slide-up", "value": "opacity, transform 180ms ease", "purpose": "Toasts and sheets."}
+    ],
+    "breakpoints": [{"name": "sm", "value": "640px"}]
+  },
+  "components": [
+    {"name": "Primary Button", "kind": "button", "refersTo": "button-primary", "description": "One per view.", "html": "<button class=\"ds-btn-primary\">Save</button>", "css": ".ds-btn-primary{background:oklch(79% 0.125 228);color:oklch(19% 0.04 245);border:0;border-radius:.6rem;padding:0 .75rem;height:2rem;font:600 .875rem Jost,sans-serif;transition:filter .15s}.ds-btn-primary:hover{filter:brightness(1.08)}.ds-btn-primary:focus-visible{outline:2px solid oklch(79% 0.125 228);outline-offset:2px}"},
+    {"name": "Soft Button", "kind": "button", "refersTo": "button-soft", "description": "Secondary action on a card.", "html": "<button class=\"ds-btn-soft\">+ Add</button>", "css": ".ds-btn-soft{background:color-mix(in oklab,oklch(79% 0.125 228) 12%,transparent);color:oklch(79% 0.125 228);border:1px solid color-mix(in oklab,oklch(79% 0.125 228) 25%,transparent);border-radius:.6rem;padding:0 .75rem;height:2rem;font:600 .875rem Jost,sans-serif}.ds-btn-soft:hover{background:color-mix(in oklab,oklch(79% 0.125 228) 20%,transparent)}"},
+    {"name": "Card", "kind": "card", "refersTo": "card", "description": "Flat surface.", "html": "<section class=\"ds-card\"><h3>Node</h3><p>10.0.0.1</p></section>", "css": ".ds-card{background:oklch(17.5% 0.03 258);border:1px solid oklch(14% 0.026 258);border-radius:1rem;padding:16px;color:oklch(92% 0.014 240)}.ds-card h3{font:600 1.25rem 'League Spartan',sans-serif;margin:0}.ds-card p{font:.75rem ui-monospace,monospace;opacity:.6;margin:4px 0 0}"},
+    {"name": "Badge", "kind": "chip", "refersTo": "badge", "description": "Soft status badge.", "html": "<span class=\"ds-badge\">×1.5</span>", "css": ".ds-badge{display:inline-flex;align-items:center;height:1.25rem;padding:0 .5rem;border-radius:9999px;font-size:.75rem;background:color-mix(in oklab,oklch(83% 0.15 82) 15%,transparent);color:oklch(83% 0.15 82)}"}
+  ],
+  "narrative": {
+    "northStar": "Frosted Control Room",
+    "keyCharacteristics": ["Three navy tones with 1px borders. No shadows on resting content.", "A single cyan primary action per view.", "League Spartan headings, Jost body, monospace for machine values.", "Copy is short. Details go in external docs."],
+    "rules": [
+      {"name": "The Signal Only Rule", "section": "colors", "body": "Saturated color means state or the primary action."},
+      {"name": "The Visible Affordance Rule", "section": "colors", "body": "An interactive control must stand out from the surface it sits on."},
+      {"name": "The Short Copy Rule", "section": "typography", "body": "Helper text is one short line or it's left out."},
+      {"name": "The Float Only Rule", "section": "elevation", "body": "Only things that float over the page cast a shadow."}
+    ]
+  }
+}

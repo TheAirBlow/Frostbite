@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 
 	"frostbite/internal/hub"
 	"frostbite/internal/keys"
@@ -10,9 +11,9 @@ import (
 
 // registerTools registers the small helpers the UI uses while filling forms.
 func (s *Server) registerTools(mux authMux) {
-	mux.Admin("POST /tools/keys", s.genKeys)
-	mux.Admin("POST /tools/parse-link", s.parseLink)
-	mux.Admin("POST /tools/test-reality", s.testReality)
+	mux.Node("POST /tools/keys", nil, s.genKeys)
+	mux.Node("POST /tools/parse-link", nil, s.parseLink)
+	mux.Node("POST /tools/test-reality", nil, s.testReality)
 }
 
 // genKeys generates a secret of the requested kind.
@@ -100,12 +101,18 @@ func (s *Server) testReality(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		DaemonID int64  `json:"daemon_id"`
 		Dest     string `json:"dest"`
+		SNI      string `json:"sni"`
+		XVer     int    `json:"xver"`
 	}
 	if err := decode(r, &req); err != nil || req.Dest == "" {
 		badRequest(w, "dest is required")
 		return
 	}
-	res, err := s.Hub.Command(r.Context(), req.DaemonID, link.CmdTestReality, map[string]string{"dest": req.Dest})
+	args := map[string]string{"dest": req.Dest, "sni": req.SNI}
+	if req.XVer == 1 || req.XVer == 2 {
+		args["xver"] = strconv.Itoa(req.XVer)
+	}
+	res, err := s.Hub.Command(r.Context(), req.DaemonID, link.CmdTestReality, args)
 	switch err {
 	case nil:
 		ok(w, res)

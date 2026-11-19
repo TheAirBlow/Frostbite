@@ -36,6 +36,7 @@ export default {
   'dash.daemons': 'Daemons',
   'dash.allConnected': 'all connected',
   'dash.someOffline': 'some are offline',
+  'dash.allOffline': 'all offline',
   'dash.byStatus': 'Users by status',
   'dash.nodes': 'Nodes',
   'dash.manage': 'Manage',

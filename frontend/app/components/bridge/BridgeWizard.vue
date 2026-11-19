@@ -67,7 +67,7 @@
         <p class="mt-1 text-lg">{{ sentence }}</p>
       </div>
       <ul class="text-base-content/70 list-disc pl-5 text-sm">
-        <li v-if="kind === 'relay'">{{ $t('Users who can reach the target inbound see an extra profile that goes through the relay. Nothing to configure on their side.') }}</li>
+        <li v-if="kind === 'relay'">{{ $t('Users of the target inbound get an extra profile through the relay.') }}</li>
         <template v-else>
           <li>{{ $t('A new inbound appears on the bridge. Put it in a squad to let users in.') }}</li>
           <li>{{ $t('Its traffic leaves through the exit you picked. Keys for chained servers are managed for you.') }}</li>

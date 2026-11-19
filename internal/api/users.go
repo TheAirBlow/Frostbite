@@ -28,6 +28,8 @@ func (s *Server) registerUsers(mux authMux) {
 	mux.Auth("POST /users/import", s.importUsers)
 	mux.Auth("POST /users/import-db", s.importDatabase)
 	mux.Auth("POST /users/bulk", s.bulkUsers)
+	mux.Auth("GET /users/lookup", s.lookupUsers)
+	mux.Node("PUT /users/{id}/access", nil, s.setUserAccess)
 	mux.Auth("GET /users/{id}", s.getUser)
 	mux.Auth("PUT /users/{id}", s.updateUser)
 	mux.Auth("POST /users/{id}/rotate", s.rotateUser)
@@ -40,14 +42,22 @@ func (s *Server) registerUsers(mux authMux) {
 // userResponse is a user with the extras the UI shows next to it.
 type userResponse struct {
 	db.User
-	SquadIDs []int64 `json:"squad_ids"`
-	Online   bool    `json:"online"`
-	SubURL   string  `json:"sub_url"`
+	SquadIDs   []int64 `json:"squad_ids"`
+	Online     bool    `json:"online"`
+	SubURL     string  `json:"sub_url"`
+	Manageable bool    `json:"manageable"` // false when a node admin may only change the user's access to their nodes
 }
 
 // newUserResponse decorates a user.
 func (s *Server) newUserResponse(r *http.Request, u db.User, squads []int64, online map[int64]bool) userResponse {
-	return userResponse{User: u, SquadIDs: orEmpty(squads), Online: online[u.ID], SubURL: s.publicURL(r) + "/sub/" + u.SubToken}
+	return userResponse{User: u, SquadIDs: orEmpty(squads), Online: online[u.ID], SubURL: s.publicURL(r) + "/sub/" + u.SubToken, Manageable: true}
+}
+
+// restricted strips the secrets from a user the caller may not fully manage.
+func (u userResponse) restricted() userResponse {
+	u.Manageable = false
+	u.Uuid, u.Password, u.SubToken, u.SubURL = "", "", "", ""
+	return u
 }
 
 // onlineSet is the set of users with a live connection.
@@ -90,6 +100,13 @@ func (s *Server) loadUser(w http.ResponseWriter, r *http.Request) (db.User, bool
 		notFound(w, "not found")
 		return db.User{}, false
 	}
+	if good, err := s.manageable(r.Context(), u); err != nil {
+		internalError(w, err)
+		return db.User{}, false
+	} else if !good {
+		forbidden(w, "you can only change this user's access to your nodes")
+		return db.User{}, false
+	}
 	return u, true
 }
 
@@ -116,9 +133,14 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	if owner == nil {
 		owner = int64Param(r, "owner")
 	}
+	sc := scopeFrom(r.Context())
+	var nodeAdmin *int64
+	if sc != nil {
+		nodeAdmin = &sc.adminID
+	}
 	rows, err := s.Queries.ListUsers(r.Context(), db.ListUsersParams{
 		Status: strParam(r, "status"), Search: strParam(r, "search"), Owner: owner, Tag: strParam(r, "tag"),
-		Squad: int64Param(r, "squad"), Sort: r.URL.Query().Get("sort"), Skip: offset, MaxRows: limit,
+		Squad: int64Param(r, "squad"), NodeAdmin: nodeAdmin, Sort: r.URL.Query().Get("sort"), Skip: offset, MaxRows: limit,
 	})
 	if err != nil {
 		internalError(w, err)
@@ -138,19 +160,28 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	for _, l := range links {
 		squads[l.UserID] = append(squads[l.UserID], l.SquadID)
 	}
+	nodes, err := s.userNodes(r.Context(), ids)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
 
 	online := s.onlineSet()
 	var total int64
 	items := make([]userResponse, len(rows))
 	for i, row := range rows {
 		total = row.Total
-		items[i] = s.newUserResponse(r, db.User{
+		u := db.User{
 			ID: row.ID, Username: row.Username, Uuid: row.Uuid, Password: row.Password, SubToken: row.SubToken, Status: row.Status,
 			TrafficLimit: row.TrafficLimit, TrafficUsed: row.TrafficUsed, TrafficLifetime: row.TrafficLifetime, ResetStrategy: row.ResetStrategy,
 			LastReset: row.LastReset, ExpireAt: row.ExpireAt, OnHoldDays: row.OnHoldDays, DeviceLimit: row.DeviceLimit, IpLimit: row.IpLimit,
 			Tags: row.Tags, Note: row.Note, Email: row.Email, TelegramID: row.TelegramID, PlanID: row.PlanID, OwnerID: row.OwnerID,
 			OnlineAt: row.OnlineAt, BlockedUntil: row.BlockedUntil, SubLastAt: row.SubLastAt, SubLastUa: row.SubLastUa, CreatedAt: row.CreatedAt,
-		}, squads[row.ID], online)
+		}
+		items[i] = s.newUserResponse(r, u, squads[row.ID], online)
+		if !sc.manages(u, nodes[u.ID]) {
+			items[i] = items[i].restricted()
+		}
 	}
 	ok(w, map[string]any{"items": items, "total": total})
 }
@@ -349,6 +380,10 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		forbidden(w, msg)
 		return
 	}
+	if err := checkSquads(r.Context(), req.SquadIDs); err != nil {
+		invalid(w, "squad_ids", err.Error())
+		return
+	}
 
 	u, err := s.insertUser(r.Context(), req, req.Username, admin)
 	if err != nil {
@@ -415,6 +450,10 @@ func (s *Server) createUsers(w http.ResponseWriter, r *http.Request) {
 		forbidden(w, msg)
 		return
 	}
+	if err := checkSquads(r.Context(), req.SquadIDs); err != nil {
+		invalid(w, "squad_ids", err.Error())
+		return
+	}
 
 	out := make([]db.User, 0, req.Count)
 	for i := range req.Count {
@@ -477,6 +516,10 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		invalid(w, "status", "status must be active, disabled or on_hold")
 		return
 	}
+	if err := checkSquads(r.Context(), req.SquadIDs); err != nil {
+		invalid(w, "squad_ids", err.Error())
+		return
+	}
 
 	u, err := s.Queries.UpdateUser(r.Context(), db.UpdateUserParams{
 		ID: cur.ID, Username: req.Username, Status: status, TrafficLimit: req.TrafficLimit, ResetStrategy: req.ResetStrategy,
@@ -492,7 +535,12 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	if req.SquadIDs != nil {
+	if req.SquadIDs != nil && scopeFrom(r.Context()) != nil {
+		if err := s.setOwnedSquads(r.Context(), u.ID, req.SquadIDs); err != nil {
+			dbError(w, err)
+			return
+		}
+	} else if req.SquadIDs != nil {
 		if err := s.Queries.ClearUserSquads(r.Context(), ids); err != nil {
 			internalError(w, err)
 			return
@@ -535,7 +583,14 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ids, err := s.allowedIDs(r, req.IDs)
+	squadsOnly := req.Action == "set_squads" || req.Action == "add_squads"
+	if squadsOnly {
+		if err := checkSquads(r.Context(), req.SquadIDs); err != nil {
+			invalid(w, "squad_ids", err.Error())
+			return
+		}
+	}
+	ids, err := s.allowedIDs(r, req.IDs, squadsOnly)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -579,6 +634,14 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 			err = s.Queries.RefreshUsersStatus(ctx, ids)
 		}
 	case "set_squads", "add_squads":
+		if req.Action == "set_squads" && scopeFrom(ctx) != nil {
+			for _, id := range ids {
+				if err = s.setOwnedSquads(ctx, id, req.SquadIDs); err != nil {
+					break
+				}
+			}
+			break
+		}
 		if req.Action == "set_squads" {
 			if err = s.Queries.ClearUserSquads(ctx, ids); err != nil {
 				break
@@ -590,8 +653,8 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 	case "add_tags":
 		err = s.Queries.AddUsersTags(ctx, db.AddUsersTagsParams{Ids: ids, NewTags: req.Tags})
 	case "set_owner":
-		if scopeOwner(r) != nil {
-			forbidden(w, "resellers can't hand users over")
+		if scopeOwner(r) != nil || scopeFrom(ctx) != nil {
+			forbidden(w, "only admins can hand users over")
 			return
 		}
 		err = s.Queries.SetUsersOwner(ctx, db.SetUsersOwnerParams{Ids: ids, OwnerID: req.OwnerID})
@@ -608,16 +671,28 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]int{"affected": len(ids)})
 }
 
-// allowedIDs filters ids down to the users the caller may touch.
-func (s *Server) allowedIDs(r *http.Request, ids []int64) ([]int64, error) {
+// allowedIDs filters ids down to the users the caller may touch. A node admin may change anyone's access to
+// their nodes, so with access set they keep every user; otherwise only the users they fully manage.
+func (s *Server) allowedIDs(r *http.Request, ids []int64, access bool) ([]int64, error) {
 	owner := scopeOwner(r)
-	rows, err := s.Queries.ListUsers(r.Context(), db.ListUsersParams{Owner: owner, MaxRows: 100000})
+	sc := scopeFrom(r.Context())
+	var nodeAdmin *int64
+	if sc != nil && !access {
+		nodeAdmin = &sc.adminID
+	}
+	rows, err := s.Queries.ListUsers(r.Context(), db.ListUsersParams{Owner: owner, NodeAdmin: nodeAdmin, MaxRows: 100000})
 	if err != nil {
 		return nil, err
 	}
+	var nodes map[int64][]int64
+	if nodeAdmin != nil {
+		if nodes, err = s.userNodes(r.Context(), ids); err != nil {
+			return nil, err
+		}
+	}
 	have := map[int64]bool{}
 	for _, row := range rows {
-		have[row.ID] = true
+		have[row.ID] = nodeAdmin == nil || sc.manages(db.User{ID: row.ID, OwnerID: row.OwnerID}, nodes[row.ID])
 	}
 	var out []int64
 	for _, id := range ids {
@@ -700,6 +775,7 @@ type linkResponse struct {
 	Country  string `json:"country"`
 	Protocol string `json:"protocol"`
 	Bridge   bool   `json:"bridge"`
+	Via      string `json:"via,omitempty"` // turnable or turnable-local, when the connection needs a Turnable app
 	Link     string `json:"link"`
 	Config   string `json:"config,omitempty"` // a ready to use config file, for protocols that have one
 }
@@ -710,7 +786,7 @@ func newLinkResponse(p compose.Profile) (linkResponse, bool) {
 	if err != nil {
 		return linkResponse{}, false
 	}
-	r := linkResponse{Name: p.Name, Node: p.NodeName, Country: p.Country, Protocol: p.Protocol, Bridge: p.Bridge, Link: l}
+	r := linkResponse{Name: p.Name, Node: p.NodeName, Country: p.Country, Protocol: p.Protocol, Bridge: p.Bridge, Via: p.Via, Link: l}
 	if p.Protocol == spec.ProtoWireGuard {
 		r.Config = share.WGQuick(p.Upstream, p.Options.WGDNS)
 	}
@@ -723,7 +799,7 @@ func (s *Server) userLinks(w http.ResponseWriter, r *http.Request) {
 	if !good {
 		return
 	}
-	profiles, err := s.profilesOf(r.Context(), u)
+	profiles, err := s.profilesOf(r.Context(), u, compose.ModeAll)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -781,4 +857,93 @@ func (s *Server) userByToken(ctx context.Context, token string) (db.User, error)
 		return db.User{}, err
 	}
 	return u, err
+}
+
+// lookupUsers finds users by name for granting access, including ones the caller can't otherwise see.
+func (s *Server) lookupUsers(w http.ResponseWriter, r *http.Request) {
+	if scopeOwner(r) != nil {
+		forbidden(w, "admin access required")
+		return
+	}
+	rows, err := s.Queries.ListUsers(r.Context(), db.ListUsersParams{Search: strParam(r, "search"), Sort: "name", MaxRows: 20})
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	ids := make([]int64, len(rows))
+	for i, row := range rows {
+		ids[i] = row.ID
+	}
+	links, err := s.Queries.ListUserSquadsByUsers(r.Context(), ids)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	nodes, err := s.userNodes(r.Context(), ids)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	sc := scopeFrom(r.Context())
+	type match struct {
+		ID         int64   `json:"id"`
+		Username   string  `json:"username"`
+		SquadIDs   []int64 `json:"squad_ids"` // only the squads the caller may hand out
+		Manageable bool    `json:"manageable"`
+	}
+	out := make([]match, len(rows))
+	for i, row := range rows {
+		out[i] = match{ID: row.ID, Username: row.Username, SquadIDs: []int64{},
+			Manageable: sc.manages(db.User{ID: row.ID, OwnerID: row.OwnerID}, nodes[row.ID])}
+		for _, l := range links {
+			if l.UserID == row.ID && sc.ownsSquad(l.SquadID) {
+				out[i].SquadIDs = append(out[i].SquadIDs, l.SquadID)
+			}
+		}
+	}
+	ok(w, out)
+}
+
+// setUserAccess sets which of the caller's squads a user holds, leaving the rest of their squads alone.
+func (s *Server) setUserAccess(w http.ResponseWriter, r *http.Request) {
+	id, good := pathID(r)
+	if !good {
+		badRequest(w, "invalid id in path")
+		return
+	}
+	var req struct {
+		SquadIDs []int64 `json:"squad_ids"`
+	}
+	if err := decode(r, &req); err != nil {
+		badRequest(w, err.Error())
+		return
+	}
+	u, err := s.Queries.GetUser(r.Context(), id)
+	if err != nil {
+		dbError(w, err)
+		return
+	}
+	if err := checkSquads(r.Context(), req.SquadIDs); err != nil {
+		invalid(w, "squad_ids", err.Error())
+		return
+	}
+	if err := s.setOwnedSquads(r.Context(), u.ID, req.SquadIDs); err != nil {
+		dbError(w, err)
+		return
+	}
+	s.Hub.MarkDirty()
+	s.audit(r, "user.access", u.Username, map[string]any{"squad_ids": req.SquadIDs})
+	squads, err := s.Queries.ListUserSquadIDs(r.Context(), u.ID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	out := s.newUserResponse(r, u, squads, s.onlineSet())
+	if good, err := s.manageable(r.Context(), u); err != nil {
+		internalError(w, err)
+		return
+	} else if !good {
+		out = out.restricted()
+	}
+	ok(w, out)
 }

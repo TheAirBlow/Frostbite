@@ -33,6 +33,9 @@ func (d *Daemon) Validate() error {
 		if err := in.validateSecurity(); err != nil {
 			return err
 		}
+		if err := in.validateGuard(); err != nil {
+			return err
+		}
 		if in.Protocol == ProtoForward && (in.Forward == nil || in.Forward.Address == "" || in.Forward.Port == 0) {
 			return Invalid("forward.address", "the relay needs a target address and port")
 		}
@@ -77,9 +80,19 @@ func (in Inbound) validateSecurity() error {
 			return Invalid("security.reality.xver", "the PROXY header version must be 0, 1 or 2")
 		}
 	case SecurityTLS:
+		if in.Security.ACME != nil && in.Security.Caddy != nil {
+			return Invalid("security.caddy.domain", "pick either an automatic certificate or Caddy's, not both")
+		}
 		if a := in.Security.ACME; a != nil {
 			if a.Domain == "" || net.ParseIP(a.Domain) != nil {
 				return Invalid("security.acme.domain", "automatic certificates need a domain name, not an address")
+			}
+		} else if c := in.Security.Caddy; c != nil {
+			if c.Domain == "" || net.ParseIP(c.Domain) != nil || strings.ContainsAny(c.Domain, "/\\ ") {
+				return Invalid("security.caddy.domain", "Caddy's certificate is looked up by domain name, not an address")
+			}
+			if c.Dir != "" && !strings.HasPrefix(c.Dir, "/") {
+				return Invalid("security.caddy.dir", "use an absolute path")
 			}
 		} else if in.Security.CertPath == "" || in.Security.KeyPath == "" {
 			if in.Security.CertPath == "" {

@@ -4,7 +4,7 @@
       <header class="border-base-300 flex shrink-0 items-center justify-between gap-3 border-b px-5 py-4">
         <slot name="header">
           <div class="min-w-0">
-            <h3 class="font-display truncate text-xl font-semibold">{{ t(title) }}</h3>
+            <h2 class="font-display truncate text-xl font-semibold">{{ t(title) }}</h2>
             <p v-if="subtitle" class="text-base-content/60 truncate text-sm">{{ t(subtitle) }}</p>
           </div>
         </slot>
@@ -12,10 +12,10 @@
           <Icon name="fa6-solid:xmark" size="14" />
         </button>
       </header>
-      <div class="min-h-0 flex-1 overflow-y-auto p-5">
+      <div class="min-h-0 flex-1 overflow-y-auto p-5 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+1.25rem))]">
         <slot />
       </div>
-      <footer v-if="$slots.footer" class="border-base-300 shrink-0 border-t px-5 py-3">
+      <footer v-if="$slots.footer" class="border-base-300 shrink-0 border-t px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <slot name="footer" />
       </footer>
     </div>

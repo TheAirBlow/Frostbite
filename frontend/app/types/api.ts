@@ -5,7 +5,7 @@ export interface ApiErrorBody {
   field?: string
 }
 
-export type Role = 'owner' | 'admin' | 'reseller'
+export type Role = 'owner' | 'admin' | 'reseller' | 'node_admin'
 
 export interface Admin {
   id: number
@@ -14,6 +14,8 @@ export interface Admin {
   enabled: boolean
   user_quota: number | null
   traffic_quota: number | null
+  // the nodes a node admin manages, empty for every other role
+  node_ids: number[]
   note: string
   created_at: string
 }
@@ -153,6 +155,20 @@ export interface Security {
   ech_config?: string
   reality?: Reality | null
   acme?: { domain: string, email?: string } | null
+  caddy?: { domain: string, dir?: string } | null
+}
+
+export interface Guard {
+  enabled: boolean
+  target?: string
+  sni?: string
+  xver?: number | null
+  interval?: number
+  timeout?: number
+  failures?: number
+  give_up?: number
+  takeover?: boolean | null
+  restart?: boolean | null
 }
 
 export interface Mux {
@@ -305,6 +321,8 @@ export interface SubSettings {
   logo_url: string
   accent: string
   footer: string
+  // apps whose user agent contains one of these are given Turnable links
+  turnable_agents: string[]
 }
 
 export interface PresetParam {
@@ -391,6 +409,8 @@ export interface PanelUser {
   squad_ids: number[]
   online: boolean
   sub_url: string
+  // false when a node admin may only change which of their squads the user is in; secrets are blank then
+  manageable: boolean
 }
 
 export interface UserPage {
@@ -410,6 +430,8 @@ export interface UserLink {
   country: string
   protocol: string
   bridge: boolean
+  // set when the connection only works together with a Turnable app
+  via?: 'turnable' | 'turnable-local'
   link: string
   config?: string
 }
@@ -611,4 +633,9 @@ export interface TurnableRoute {
   socket: string
   transport?: string
   encryption?: string
+  // what apps other than Turnable are given for this destination
+  kind?: 'external' | 'inbound' | 'custom'
+  inbound_id?: number
+  url?: string
+  local_port?: number
 }

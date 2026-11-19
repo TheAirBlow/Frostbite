@@ -9,26 +9,26 @@
 
     <Onboarding v-if="data && !setupDone" :steps="steps" class="mb-5" />
 
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <StatTile :label="t('dash.users')" :value="data?.users.total ?? '…'" :hint="t('dash.active', { n: data?.users.by_status.active ?? 0 })" icon="fa6-solid:users" />
       <StatTile :label="t('dash.online')" :value="data?.users.online ?? '…'" :hint="t('dash.onlineHint')" icon="fa6-solid:signal" tone="bg-success/15 text-success" />
       <StatTile :label="t('dash.traffic')" :value="formatBytes((data?.traffic.up ?? 0) + (data?.traffic.down ?? 0))" :hint="`↓ ${formatBytes(data?.traffic.down ?? 0)} · ↑ ${formatBytes(data?.traffic.up ?? 0)}`" icon="fa6-solid:arrow-right-arrow-left" tone="bg-secondary/15 text-secondary" />
-      <StatTile :label="t('dash.daemons')" :value="data ? `${data.daemons.online}/${data.daemons.total}` : '…'" :hint="data && data.daemons.online < data.daemons.total ? t('dash.someOffline') : t('dash.allConnected')" icon="fa6-solid:server" :tone="data && data.daemons.online < data.daemons.total ? 'bg-warning/15 text-warning' : 'bg-accent/15 text-accent'" />
+      <StatTile :label="t('dash.daemons')" :value="data ? `${data.daemons.online}/${data.daemons.total}` : '…'" :hint="!data || data.daemons.online === data.daemons.total ? t('dash.allConnected') : data.daemons.online === 0 ? t('dash.allOffline') : t('dash.someOffline')" icon="fa6-solid:server" :tone="data && data.daemons.online < data.daemons.total ? 'bg-warning/15 text-warning' : 'bg-accent/15 text-accent'" />
     </div>
 
     <div class="mt-4 grid gap-4 xl:grid-cols-3">
-      <Section :title="t('dash.traffic')" class="xl:col-span-2">
-        <div class="relative h-60">
+      <Section :title="t('dash.traffic')" :class="statusSlices.length > 1 ? 'xl:col-span-2' : 'xl:col-span-3'">
+        <p v-if="!shown && series.length === 0" class="text-base-content/60 text-sm">{{ $t('No traffic yet') }}</p>
+        <div v-else class="relative h-60">
           <Transition name="fade">
             <div v-if="shown" class="skeleton absolute inset-0" />
           </Transition>
-          <EmptyState v-if="!shown && series.length === 0" icon="fa6-solid:chart-area" :title="$t('No traffic yet')" text="Usage shows up here as soon as someone connects." />
-          <AreaChart v-else-if="series.length" :data="series" :categories="categories" :height="230" :x-formatter="xFormatter" :y-formatter="(v: number) => formatBytes(v)" :curve-type="CurveType.MonotoneX" :duration="0" :tooltip-title-formatter="titleFormatter" />
+          <AreaChart v-if="series.length" :data="series" :categories="categories" :height="230" :x-formatter="xFormatter" :y-formatter="(v: number) => formatBytes(v)" :curve-type="CurveType.MonotoneX" :duration="0" :tooltip-title-formatter="titleFormatter" />
         </div>
       </Section>
 
-      <Section :title="t('dash.byStatus')">
-        <div v-if="statusSlices.length" class="flex flex-col items-center gap-3">
+      <Section v-if="statusSlices.length > 1" :title="t('dash.byStatus')">
+        <div class="flex flex-col items-center gap-3">
           <DonutChart :data="statusSlices.map(s => s.value)" :categories="statusCategories" :radius="70" :height="190" :duration="0" />
           <div class="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
             <span v-for="s in statusSlices" :key="s.key" class="flex items-center gap-1.5">
@@ -36,17 +36,16 @@
             </span>
           </div>
         </div>
-        <EmptyState v-else icon="fa6-solid:users" :title="$t('No users yet')" />
       </Section>
     </div>
 
     <div class="mt-4 grid gap-4 xl:grid-cols-3">
-      <Section :title="t('dash.nodes')" class="xl:col-span-2">
+      <Section :title="t('dash.nodes')" :class="data?.traffic.by_node.length || data?.top.length ? 'xl:col-span-2' : 'xl:col-span-3'">
         <template #actions>
           <NuxtLink to="/nodes" class="btn btn-ghost btn-xs">{{ t('dash.manage') }} <Icon name="fa6-solid:arrow-right" size="11" /></NuxtLink>
         </template>
-        <div v-if="nodes?.length" class="flex flex-col gap-2">
-          <div v-for="n in nodes" :key="n.id" class="bg-base-100 border-base-300 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border p-3">
+        <div v-if="nodes?.length" class="divide-base-300 -my-3 flex flex-col divide-y">
+          <div v-for="n in nodes" :key="n.id" class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
             <span class="text-xl">{{ flag(n.country) }}</span>
             <div class="min-w-32 flex-1">
               <p class="font-medium">{{ n.name }}</p>
@@ -66,7 +65,7 @@
           </div>
         </div>
         <EmptyState v-else icon="fa6-solid:server" :title="$t('No nodes yet')" text="A node is a server your users connect to.">
-          <button class="btn btn-primary btn-sm" @click="side.open('node')">{{ $t('Add a node') }}</button>
+          <button class="btn btn-soft btn-primary btn-sm" @click="side.open('node')">{{ $t('Add a node') }}</button>
         </EmptyState>
       </Section>
 
@@ -79,19 +78,18 @@
         </div>
       </Section>
 
-      <Section :title="t('dash.topUsers')">
-        <div v-if="data?.top.length" class="flex flex-col gap-2.5">
-          <button v-for="u in data.top" :key="u.id" class="hover:bg-base-300/40 -mx-2 rounded-lg px-2 py-1 text-left" @click="side.open('user', u.id)">
+      <Section v-if="data?.top.length" :title="t('dash.topUsers')">
+        <div class="flex flex-col gap-2.5">
+          <button v-for="u in data!.top" :key="u.id" class="hover:bg-base-300/40 -mx-2 rounded-lg px-2 py-1 text-left" @click="side.open('user', u.id)">
             <div class="flex items-center justify-between text-sm">
               <span class="truncate">{{ u.username }}</span>
               <span class="text-base-content/60 text-xs">{{ formatBytes(u.total) }}</span>
             </div>
             <div class="bg-base-300 mt-1 h-1 overflow-hidden rounded-full">
-              <div class="bg-primary h-full rounded-full" :style="{ width: `${(u.total / data.top[0]!.total) * 100}%` }" />
+              <div class="bg-primary h-full rounded-full" :style="{ width: `${(u.total / data!.top[0]!.total) * 100}%` }" />
             </div>
           </button>
         </div>
-        <EmptyState v-else icon="fa6-solid:ranking-star" :title="$t('Nobody yet')" />
       </Section>
     </div>
   </div>

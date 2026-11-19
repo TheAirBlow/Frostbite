@@ -77,7 +77,8 @@ var (
 	pKey    = presetParam{Key: "key", Label: "Key path", Hint: "Path on the node", Default: "/certs/privkey.pem", Kind: "string"}
 	pEmail  = presetParam{Key: "email", Label: "Email for an automatic certificate", Hint: "Fill this to get a free Let's Encrypt certificate. Needs a real domain pointing at the node, and port 80 free there. The paths above are ignored.", Kind: "string"}
 	pPath   = presetParam{Key: "path", Label: "Path", Hint: "Leave empty for a random one", Kind: "string"}
-	pDest   = presetParam{Key: "dest", Label: "Handshake target", Hint: "A real site that speaks TLS 1.3, as host:port", Default: "www.cloudflare.com:443", Kind: "string"}
+	pDest   = presetParam{Key: "dest", Label: "Handshake target", Hint: "Where the server connects to borrow the handshake, as host:port. A real site that speaks TLS 1.3 and h2, or an IP address when you give the server names below.", Default: "www.cloudflare.com:443", Kind: "string"}
+	pNames  = presetParam{Key: "server_names", Label: "Server names (SNI)", Hint: "The names clients send, comma separated. Empty uses the host of the target. Needed when the target is an IP address, such as a site behind a CDN.", Kind: "string"}
 )
 
 // bothCores lists the preset targets that work on xray and sing-box alike.
@@ -125,9 +126,9 @@ var presets = []preset{
 	{
 		ID: "vless-reality", Label: "VLESS + REALITY", Group: "Recommended", Cores: bothCores,
 		Description: "Looks like a visit to a real site. No domain or certificate needed.",
-		Params:      []presetParam{pPort("443"), pDest},
+		Params:      []presetParam{pPort("443"), pDest, pNames},
 		build: func(p presetValues, req *inboundRequest) error {
-			sec, err := realitySecurity(p.str("dest", "www.cloudflare.com:443"))
+			sec, err := realitySecurity(p.str("dest", "www.cloudflare.com:443"), p.str("server_names", ""))
 			if err != nil {
 				return err
 			}
@@ -142,9 +143,9 @@ var presets = []preset{
 	{
 		ID: "vless-xhttp-reality", Label: "VLESS + XHTTP + REALITY", Group: "Recommended", Cores: []string{"xray"},
 		Description: "REALITY over XHTTP, good where plain TCP gets throttled.",
-		Params:      []presetParam{pPort("443"), pDest, pPath},
+		Params:      []presetParam{pPort("443"), pDest, pNames, pPath},
 		build: func(p presetValues, req *inboundRequest) error {
-			sec, err := realitySecurity(p.str("dest", "www.cloudflare.com:443"))
+			sec, err := realitySecurity(p.str("dest", "www.cloudflare.com:443"), p.str("server_names", ""))
 			if err != nil {
 				return err
 			}
@@ -327,10 +328,16 @@ func splitComma(s string) []string {
 }
 
 // realitySecurity generates fresh REALITY keys for a handshake target.
-func realitySecurity(dest string) (spec.Security, error) {
+func realitySecurity(dest, names string) (spec.Security, error) {
 	host, _, err := net.SplitHostPort(dest)
 	if err != nil {
-		return spec.Security{}, fmt.Errorf("handshake target must look like host:port")
+		return spec.Security{}, spec.Invalid("params.dest", "the handshake target must look like host:port")
+	}
+	serverNames := []string{host}
+	if fields := strings.FieldsFunc(names, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' }); len(fields) > 0 {
+		serverNames = fields
+	} else if net.ParseIP(host) != nil {
+		return spec.Security{}, spec.Invalid("params.server_names", "the target is an IP address, so name the site clients should ask for")
 	}
 	pair, err := keys.Reality()
 	if err != nil {
@@ -342,7 +349,7 @@ func realitySecurity(dest string) (spec.Security, error) {
 	}
 	return spec.Security{
 		Type: spec.SecurityReality, Fingerprint: "chrome",
-		Reality: &spec.Reality{Dest: dest, ServerNames: []string{host}, PrivateKey: pair.Private, PublicKey: pair.Public, ShortIDs: []string{sid}},
+		Reality: &spec.Reality{Dest: dest, ServerNames: serverNames, PrivateKey: pair.Private, PublicKey: pair.Public, ShortIDs: []string{sid}},
 	}, nil
 }
 

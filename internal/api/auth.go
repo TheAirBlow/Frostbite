@@ -23,9 +23,10 @@ import (
 
 // Roles an admin account can have.
 const (
-	RoleOwner    = "owner"
-	RoleAdmin    = "admin"
-	RoleReseller = "reseller"
+	RoleOwner     = "owner"
+	RoleAdmin     = "admin"
+	RoleReseller  = "reseller"
+	RoleNodeAdmin = "node_admin"
 )
 
 // ctxKey is an unexported type to avoid context key collisions across packages.
@@ -140,7 +141,16 @@ func (m authMux) Auth(pattern string, handler http.HandlerFunc) {
 			}
 			return
 		}
-		handler.ServeHTTP(w, r.WithContext(ContextWithAdmin(r.Context(), admin)))
+		ctx := ContextWithAdmin(r.Context(), admin)
+		if admin.Role == RoleNodeAdmin {
+			sc, err := m.server.loadScope(ctx, admin)
+			if err != nil {
+				internalError(w, err)
+				return
+			}
+			ctx = context.WithValue(ctx, scopeCtxKey, sc)
+		}
+		handler.ServeHTTP(w, r.WithContext(ctx))
 	}))
 }
 
@@ -148,7 +158,7 @@ func (m authMux) Auth(pattern string, handler http.HandlerFunc) {
 func (m authMux) Admin(pattern string, handler http.HandlerFunc) {
 	m.Auth(pattern, func(w http.ResponseWriter, r *http.Request) {
 		admin, _ := AdminFromContext(r.Context())
-		if admin.Role == RoleReseller {
+		if admin.Role != RoleOwner && admin.Role != RoleAdmin {
 			forbidden(w, "admin access required")
 			return
 		}
@@ -187,6 +197,7 @@ type adminResponse struct {
 	Enabled      bool      `json:"enabled"`
 	UserQuota    *int32    `json:"user_quota"`
 	TrafficQuota *int64    `json:"traffic_quota"`
+	NodeIDs      []int64   `json:"node_ids"`
 	Note         string    `json:"note"`
 	CreatedAt    time.Time `json:"created_at"`
 }
@@ -195,8 +206,19 @@ type adminResponse struct {
 func newAdminResponse(a db.Admin) adminResponse {
 	return adminResponse{
 		ID: a.ID, Username: a.Username, Role: a.Role, Enabled: a.Enabled,
-		UserQuota: a.UserQuota, TrafficQuota: a.TrafficQuota, Note: a.Note, CreatedAt: a.CreatedAt,
+		UserQuota: a.UserQuota, TrafficQuota: a.TrafficQuota, NodeIDs: []int64{}, Note: a.Note, CreatedAt: a.CreatedAt,
 	}
+}
+
+// withNodes fills in the nodes a node admin manages.
+func (s *Server) withNodes(ctx context.Context, a db.Admin) (adminResponse, error) {
+	out := newAdminResponse(a)
+	if a.Role != RoleNodeAdmin {
+		return out, nil
+	}
+	ids, err := s.Queries.ListAdminNodeIDs(ctx, a.ID)
+	out.NodeIDs = orEmpty(ids)
+	return out, err
 }
 
 // loginRequest is the JSON body for signing in.
@@ -258,7 +280,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	})
 	metrics.AuthLogins.WithLabelValues("success").Inc()
 	slog.Info("auth: signed in", "admin", admin.Username)
-	ok(w, newAdminResponse(admin))
+	out, err := s.withNodes(r.Context(), admin)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	ok(w, out)
 }
 
 // logout ends the current session.
@@ -273,7 +300,12 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 // me returns the signed in admin.
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	admin, _ := AdminFromContext(r.Context())
-	ok(w, newAdminResponse(admin))
+	out, err := s.withNodes(r.Context(), admin)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	ok(w, out)
 }
 
 // passwordRequest is the JSON body for changing a password.

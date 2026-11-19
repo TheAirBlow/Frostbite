@@ -5,7 +5,7 @@
       :key="o.value"
       type="button"
       class="btn join-item"
-      :class="[size, model === o.value ? 'btn-primary' : 'btn-ghost bg-base-200']"
+      :class="[size, model === o.value ? 'btn-soft btn-primary' : 'text-base-content/70']"
       @click="model = o.value"
     >
       <Icon v-if="o.icon" :name="o.icon" size="13" />

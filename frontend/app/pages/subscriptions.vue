@@ -11,7 +11,7 @@
         <div class="flex flex-col gap-3">
           <FormField label="Title" name="title" hint="Shown by apps as the name of the profile."><input v-model="sub.title" class="input w-full"></FormField>
           <FormField label="Announcement" name="announce" hint="A short message some apps show at the top."><textarea v-model="sub.announce" class="textarea w-full" rows="2" /></FormField>
-          <div class="grid gap-3 sm:grid-cols-2">
+          <div class="grid gap-4 sm:grid-cols-2">
             <FormField label="Support link" name="support_url"><input v-model="sub.support_url" class="input w-full" :placeholder="$t('https://t.me/…')"></FormField>
             <FormField label="Web page link" name="web_page_url" hint="Apps with a button for it open this."><input v-model="sub.web_page_url" class="input w-full"></FormField>
           </div>
@@ -23,7 +23,10 @@
           <FormField label="Format when the app is unknown" name="default_format">
             <select v-model="sub.default_format" class="select w-full"><option value="auto">{{ $t('Guess from the app name') }}</option><option v-for="f in formats" :key="f" :value="f">{{ formatLabels[f] ?? f }}</option></select>
           </FormField>
-          <ToggleRow v-model="sub.notice_profiles" label="Tell inactive users why" hint="Instead of an empty list, expired, limited and disabled users see one profile named after the reason." />
+          <FormField label="Turnable apps" name="turnable_agents" hint="Apps with these user agents get turnable:// links only.">
+            <ChipInput v-model="sub.turnable_agents" :placeholder="$t('Turnable-Android')" spaces />
+          </FormField>
+          <ToggleRow v-model="sub.notice_profiles" label="Tell inactive users why" hint="Expired and disabled users get one profile named after the reason." />
           <ToggleRow v-model="sub.hide_bridges" label="Hide relay profiles" hint="Keeps subscriptions short by leaving out hosts that go through relays." />
         </div>
       </Section>
@@ -35,7 +38,7 @@
               <div class="flex items-center gap-2">
                 <input type="color" class="size-9 cursor-pointer rounded-lg border-0 bg-transparent" :value="sub.accent || '#7cc8f7'" @input="sub.accent = ($event.target as HTMLInputElement).value">
                 <input v-model="sub.accent" class="input input-sm w-28 font-mono" :placeholder="$t('#7cc8f7')">
-                <button v-if="sub.accent" type="button" class="btn btn-ghost btn-sm" @click="sub.accent = ''">{{ $t('Reset') }}</button>
+                <button v-if="sub.accent" type="button" class="btn btn-sm" @click="sub.accent = ''">{{ $t('Reset') }}</button>
               </div>
             </FormField>
             <FormField label="Footer" name="footer" hint="A line under the page: a link to your site, terms, a contact. Up to 500 characters."><input v-model="sub.footer" class="input w-full"></FormField>
@@ -56,10 +59,10 @@
     <!-- clients -->
     <div v-else-if="tab === 'clients'" class="grid gap-4 xl:grid-cols-2">
       <Section :title="$t('Client rules')" hint="The first rule whose pattern matches the app's user agent decides the format.">
-        <template #actions><button class="btn btn-sm" @click="newRule()"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button></template>
+        <template #actions><button class="btn btn-sm btn-soft btn-primary" @click="newRule()"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button></template>
         <div class="flex flex-col gap-2">
           <SubRuleRow v-for="r in rules ?? []" :key="r.id" :rule="r" :templates="templates ?? []" :formats="formats" @changed="refreshRules" />
-          <p v-if="!rules?.length" class="text-base-content/50 text-sm">{{ $t('No custom rules. Built in detection already knows Clash, sing-box, v2rayN, Hiddify, Streisand, Happ and Shadowrocket.') }}</p>
+          <p v-if="!rules?.length" class="text-base-content/50 text-sm">{{ $t('No custom rules. Common apps are detected automatically.') }}</p>
         </div>
         <div class="bg-base-100 border-base-300 mt-4 rounded-xl border p-3">
           <p class="mb-1 text-sm font-medium">{{ $t('Try a user agent') }}</p>
@@ -68,8 +71,8 @@
         </div>
       </Section>
 
-      <Section :title="$t('Templates')" hint="A JSON patch merged over the generated config of a format. Use it for custom DNS, rules, groups and so on.">
-        <template #actions><button class="btn btn-sm" @click="editTemplate = { id: 0, name: '', format: 'singbox', patch: {} }"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button></template>
+      <Section :title="$t('Templates')" hint="JSON merged over the generated config.">
+        <template #actions><button class="btn btn-sm btn-soft btn-primary" @click="editTemplate = { id: 0, name: '', format: 'singbox', patch: {} }"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button></template>
         <div class="flex flex-col gap-2">
           <button v-for="t in templates ?? []" :key="t.id" class="bg-base-100 border-base-300 hover:border-primary/50 flex items-center gap-3 rounded-xl border p-3 text-left transition" @click="openTemplate(t)">
             <Icon name="fa6-solid:file-code" size="14" class="text-primary" />
@@ -83,7 +86,7 @@
     <!-- preview -->
     <div v-else-if="tab === 'preview'" class="flex flex-col gap-4">
       <FormScope :form="previewForm"><Section :title="$t('See what an app would get')">
-        <div class="grid gap-3 md:grid-cols-4">
+        <div class="grid gap-4 md:grid-cols-4">
           <FormField label="User" name="user" class="md:col-span-2" required hint="Start typing, then pick one from the list.">
             <input v-model="userSearch" class="input w-full" :placeholder="$t('Search by name')" list="preview-users" autocomplete="off" @change="pickUser">
             <datalist id="preview-users"><option v-for="u in userHits" :key="u.id" :value="u.username" /></datalist>
@@ -109,7 +112,7 @@
     <FormScope v-if="editTemplate" :form="tplForm">
     <AppModal :title="editTemplate.id ? 'Edit template' : 'New template'" max-width="max-w-2xl" @close="editTemplate = null">
       <form id="tpl" class="flex flex-col gap-3" novalidate @submit.prevent="saveTemplate()">
-        <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-4 sm:grid-cols-2">
           <FormField label="Name" name="name" required><input v-model="editTemplate.name" class="input w-full"></FormField>
           <FormField label="Format" name="format"><select v-model="editTemplate.format" class="select w-full"><option v-for="f in formats" :key="f" :value="f">{{ f }}</option></select></FormField>
         </div>
@@ -221,6 +224,7 @@ const uaPresets: Record<string, string> = {
   'v2rayN': 'v2rayN/7.0',
   'Hiddify': 'HiddifyNext/2.0',
   'Shadowrocket': 'Shadowrocket/2.2',
+  'Turnable Android': 'Turnable-Android/1.0 (Android 14)',
   'curl': 'curl/8.5.0',
 }
 const uaPick = ref(uaPresets['Clash Meta']!)

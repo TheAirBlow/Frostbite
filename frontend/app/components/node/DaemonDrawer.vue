@@ -6,7 +6,7 @@
 
     <template v-if="daemon.kind === 'edge'">
       <FormField label="Listen on" name="edge_listen" required hint="Addresses the edge accepts connections on. Inbounds placed behind it share these ports."><ChipInput v-model="form.edge_listen" placeholder=":443" :check="checkListenAddr" /></FormField>
-      <FormField label="Everything else goes to" name="edge_default" hint="Probes, browsers and unknown names are passed to this host:port, such as a real website or a decoy on this machine. Empty drops them."><input v-model="form.edge_default" class="input w-full font-mono" placeholder="127.0.0.1:8080"></FormField>
+      <FormField label="Everything else goes to" name="edge_default" hint="Where unknown traffic goes. Empty drops it."><input v-model="form.edge_default" class="input w-full font-mono" placeholder="127.0.0.1:8080"></FormField>
     </template>
 
     <div v-else class="grid gap-3 sm:grid-cols-2">

@@ -43,6 +43,8 @@ type SubSettings struct {
 	LogoURL        string `json:"logo_url"` // shown on the user page, https or a data image
 	Accent         string `json:"accent"`   // hex colour for the user page
 	Footer         string `json:"footer"`
+	// Apps whose user agent contains one of these get Turnable links instead of the usual profiles.
+	TurnableAgents []string `json:"turnable_agents"`
 }
 
 // brandingOK reports whether a branding value is safe to put on the public user page.
@@ -67,6 +69,11 @@ func (s SubSettings) brandingErr() error {
 	if len(s.Footer) > 500 {
 		return spec.Invalid("footer", "the footer can be at most 500 characters")
 	}
+	for _, a := range s.TurnableAgents {
+		if strings.TrimSpace(a) == "" || len(a) > 64 {
+			return spec.Invalid("turnable_agents", "each entry is a piece of a user agent, up to 64 characters")
+		}
+	}
 	return nil
 }
 
@@ -75,7 +82,18 @@ var hexColor = regexp.MustCompile(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
 
 // defaultSub is what a fresh panel starts with.
 func defaultSub() SubSettings {
-	return SubSettings{Title: "Frostbite", UpdateHours: 6, DefaultFormat: "auto", NoticeProfiles: true}
+	return SubSettings{Title: "Frostbite", UpdateHours: 6, DefaultFormat: "auto", NoticeProfiles: true, TurnableAgents: []string{"Turnable-Android"}}
+}
+
+// isTurnableClient reports whether the user agent belongs to an app that speaks Turnable links.
+func (s SubSettings) isTurnableClient(ua string) bool {
+	ua = strings.ToLower(ua)
+	for _, a := range s.TurnableAgents {
+		if a = strings.ToLower(strings.TrimSpace(a)); a != "" && strings.Contains(ua, a) {
+			return true
+		}
+	}
+	return false
 }
 
 // loadSetting reads a json setting into v, leaving v alone when it was never saved.

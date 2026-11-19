@@ -15,22 +15,22 @@
       </g>
     </svg>
 
-    <div class="grid gap-x-16 gap-y-10 sm:grid-cols-2 xl:grid-cols-3">
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <div v-for="n in topology.nodes" :key="n.id" :data-node="n.id" class="surface relative z-0 p-3">
         <div class="mb-2 flex items-center gap-2">
           <span class="text-xl">{{ flag(n.country) }}</span>
           <div class="min-w-0"><p class="font-medium">{{ n.name }}</p><p class="text-base-content/50 truncate font-mono text-[11px]">{{ n.address }}</p></div>
         </div>
         <div v-for="d in n.daemons" :key="d.id" class="mb-1.5 last:mb-0">
-          <p class="text-base-content/50 mb-1 flex items-center gap-1.5 text-[11px] tracking-wide uppercase"><Dot :tone="d.online ? 'success' : 'muted'" /> {{ d.name }} · {{ coreLabels[d.kind] ?? d.kind }}</p>
+          <p class="text-base-content/50 mb-1 flex items-center gap-1.5 text-[11px] tracking-wide uppercase"><Dot :tone="d.online ? 'success' : 'muted'" /> {{ d.name }}<template v-if="d.name.toLowerCase() !== (coreLabels[d.kind] ?? d.kind).toLowerCase()"> · {{ coreLabels[d.kind] ?? d.kind }}</template></p>
           <div v-for="i in d.inbounds" :key="i.id" :data-inbound="i.id" class="bg-base-100 border-base-300 mb-1 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs">
             <Icon :name="i.relay ? 'fa6-solid:right-left' : 'fa6-solid:plug'" size="11" :class="i.relay ? 'text-secondary' : 'text-base-content/50'" />
             <span class="min-w-0 flex-1 truncate">{{ i.tag }}</span>
             <span class="text-base-content/50 font-mono">:{{ i.port }}</span>
           </div>
-          <p v-if="!d.inbounds.length" class="text-base-content/40 text-xs">{{ $t('no inbounds') }}</p>
+          <p v-if="!d.inbounds.length" class="text-base-content/60 text-xs">{{ $t('no inbounds') }}</p>
         </div>
-        <p v-if="!n.daemons.length" class="text-base-content/40 text-xs">{{ $t('no daemons') }}</p>
+        <p v-if="!n.daemons.length" class="text-base-content/60 text-xs">{{ $t('no daemons') }}</p>
       </div>
 
       <div v-if="customs.length" data-custom class="surface relative z-0 border-dashed p-3">

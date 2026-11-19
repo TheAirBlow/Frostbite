@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col gap-3">
     <p class="text-base-content/60 text-sm">
-      {{ $t('A host is one way clients reach this inbound. Add one per entry point: the server itself, a CDN domain, a relay. Every host becomes its own profile in subscriptions.') }}
+      {{ $t('One host per entry point. Each becomes its own profile.') }}
     </p>
     <p class="text-base-content/50 text-xs">
       {{ $t('Remark placeholders:') }} <span class="font-mono">{node} {country} {inbound} {protocol} {transport} {security} {user}</span>
@@ -13,7 +13,7 @@
         <p class="min-w-0 flex-1 truncate font-medium">{{ h.remark }}</p>
         <span v-if="h.bridge_inbound_id" class="badge badge-sm badge-secondary badge-soft">{{ $t('relay') }}</span>
         <span v-if="!h.enabled" class="badge badge-sm badge-neutral">{{ $t('off') }}</span>
-        <button class="btn btn-ghost btn-xs" @click="editing = editing === h.id ? 0 : h.id">{{ editing === h.id ? 'Close' : 'Edit' }}</button>
+        <button class="btn btn-xs" @click="editing = editing === h.id ? 0 : h.id">{{ editing === h.id ? 'Close' : 'Edit' }}</button>
       </div>
       <p class="text-base-content/50 mt-1 font-mono text-xs">{{ h.address || nodeAddress }}:{{ h.port || inbound.port }}<template v-if="h.sni"> · sni {{ h.sni }}</template><template v-if="h.path"> · {{ h.path }}</template></p>
 
@@ -32,7 +32,7 @@
           </FormField>
         </div>
         <FormField label="ALPN" name="alpn"><ChipInput v-model="draft.alpn" :placeholder="$t('h2, http/1.1')" /></FormField>
-        <ToggleRow v-model="draft.insecure" label="Allow insecure certificates" hint="Tells clients not to verify the certificate. Useful with self signed ones. Xray ignores it." />
+        <ToggleRow v-model="draft.insecure" label="Allow insecure certificates" hint="Skip certificate checks. Xray ignores it." />
         <ToggleRow v-model="draft.enabled" label="Enabled" />
         <Advanced :title="$t('Multiplexing, fragmentation and order')">
           <FormField label="Sort order" name="sort" hint="Lower comes first in subscriptions."><input v-model.number="draft.sort" type="number" class="input w-28"></FormField>

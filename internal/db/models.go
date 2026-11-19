@@ -23,6 +23,11 @@ type Admin struct {
 	CreatedAt    time.Time `db:"created_at" json:"created_at"`
 }
 
+type AdminNode struct {
+	AdminID int64 `db:"admin_id" json:"admin_id"`
+	NodeID  int64 `db:"node_id" json:"node_id"`
+}
+
 type ApiToken struct {
 	ID         int64      `db:"id" json:"id"`
 	AdminID    int64      `db:"admin_id" json:"admin_id"`

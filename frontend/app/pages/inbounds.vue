@@ -13,8 +13,8 @@
             <p class="font-medium">{{ g.node.name }} <span class="badge badge-sm badge-primary badge-soft ml-1">{{ coreLabels[g.daemon.kind] ?? g.daemon.kind }}</span></p>
             <p class="text-base-content/50 flex items-center gap-1.5 text-xs"><Dot :tone="g.daemon.live.online ? 'success' : 'muted'" /> {{ g.daemon.live.online ? 'connected' : 'offline' }} · {{ g.inbounds.length }} inbounds</p>
           </div>
-          <button v-if="g.daemon.kind !== 'edge'" class="btn btn-sm btn-ghost" @click="picker = g.daemon.id"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button>
-          <button v-else class="btn btn-sm btn-ghost" @click="side.open('daemon', g.daemon.id)"><Icon name="fa6-solid:sliders" size="12" /> {{ $t('Edge settings') }}</button>
+          <button v-if="g.daemon.kind !== 'edge'" class="btn btn-sm btn-soft btn-primary" @click="picker = g.daemon.id"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button>
+          <button v-else class="btn btn-sm" @click="side.open('daemon', g.daemon.id)"><Icon name="fa6-solid:sliders" size="12" /> {{ $t('Edge settings') }}</button>
         </header>
 
         <div v-for="i in g.inbounds" :key="i.id" class="border-base-300 hover:bg-base-300/30 flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-3 last:border-b-0" :class="{ 'opacity-55': !i.enabled }" @click="side.open('inbound', i.id)">
@@ -24,11 +24,11 @@
             <p class="text-base-content/50 font-mono text-xs">{{ i.tag }}</p>
           </div>
           <div class="flex flex-wrap items-center gap-1.5 text-xs">
-            <span v-if="i.protocol !== 'forward'" class="badge badge-sm badge-ghost">{{ i.transport.type || 'tcp' }}</span>
+            <span v-if="i.protocol !== 'forward'" class="badge badge-sm badge-ghost" :title="$t('Transport')">{{ i.transport.type || 'tcp' }}</span>
             <span v-if="i.security.type && i.security.type !== 'none'" class="badge badge-sm" :class="i.security.type === 'reality' ? 'badge-secondary badge-soft' : 'badge-accent badge-soft'">{{ i.security.type }}</span>
             <span v-if="i.protocol === 'forward'" class="badge badge-sm badge-info badge-soft"><Icon name="fa6-solid:arrow-right" size="9" /> {{ i.forward?.address }}:{{ i.forward?.port }}</span>
           </div>
-          <span class="w-16 text-right font-mono text-sm">:{{ i.port }}</span>
+          <span class="w-20 text-right font-mono text-sm" :title="$t('Port')"><span class="text-base-content/50 me-1 font-sans text-xs">{{ $t('port') }}</span>{{ i.port }}</span>
           <span class="text-base-content/50 w-24 text-right text-xs">{{ i.hosts.length }} host{{ i.hosts.length === 1 ? '' : 's' }}<template v-if="i.hosts.some(h => h.bridge_inbound_id)"> {{ $t('· relay') }}</template></span>
           <input type="checkbox" class="toggle toggle-sm toggle-primary" :checked="i.enabled" :aria-label="`Enable ${i.tag}`" @click.stop @change="toggle(i)">
         </div>
@@ -46,9 +46,9 @@
       </section>
     </template>
     <div v-else class="surface">
-      <EmptyState icon="fa6-solid:plug" :title="daemons.length ? 'No inbounds yet' : 'Add a daemon first'" :text="daemons.length ? 'Pick a ready made recipe like VLESS Reality and you are done in a few seconds.' : 'Inbounds live on a daemon, which lives on a node.'">
-        <button v-if="daemons.length" class="btn btn-primary btn-sm" @click="picker = true">{{ $t('New inbound') }}</button>
-        <NuxtLink v-else to="/nodes" class="btn btn-primary btn-sm">{{ $t('Go to nodes') }}</NuxtLink>
+      <EmptyState icon="fa6-solid:plug" :title="daemons.length ? 'No inbounds yet' : 'Add a daemon first'" :text="daemons.length ? 'Pick a recipe like VLESS Reality.' : 'Inbounds live on a daemon, which lives on a node.'">
+        <button v-if="daemons.length" class="btn btn-soft btn-primary btn-sm" @click="picker = true">{{ $t('New inbound') }}</button>
+        <NuxtLink v-else to="/nodes" class="btn btn-soft btn-primary btn-sm">{{ $t('Go to nodes') }}</NuxtLink>
       </EmptyState>
     </div>
 

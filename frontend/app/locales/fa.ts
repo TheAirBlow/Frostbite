@@ -36,6 +36,7 @@ export default {
   'dash.daemons': 'دیمن‌ها',
   'dash.allConnected': 'همه متصل‌اند',
   'dash.someOffline': 'برخی آفلاین‌اند',
+  'dash.allOffline': 'همه آفلاین‌اند',
   'dash.byStatus': 'کاربران بر اساس وضعیت',
   'dash.nodes': 'سرورها',
   'dash.manage': 'مدیریت',

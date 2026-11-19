@@ -36,6 +36,7 @@ export default {
   'dash.daemons': '守护进程',
   'dash.allConnected': '全部已连接',
   'dash.someOffline': '部分离线',
+  'dash.allOffline': '全部离线',
   'dash.byStatus': '按状态统计用户',
   'dash.nodes': '节点',
   'dash.manage': '管理',

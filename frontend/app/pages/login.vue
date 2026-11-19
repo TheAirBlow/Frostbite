@@ -46,6 +46,6 @@ const formApi = useForm(() => ({ username: username.value, password: password.va
 
 const { loading, run: submit } = useAsyncAction(async () => {
   await auth.login(username.value, password.value)
-  await navigateTo(auth.isReseller ? '/users' : '/')
+  await navigateTo(auth.home)
 }, undefined, formApi)
 </script>

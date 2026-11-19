@@ -8,7 +8,7 @@
       <progress class="progress progress-primary hidden w-40 sm:block" :value="doneCount" :max="steps.length" />
     </div>
     <ol class="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-      <li v-for="(s, i) in steps" :key="s.title" class="bg-base-100/80 border-base-300 flex flex-col gap-2 rounded-xl border p-3" :class="{ 'opacity-60': s.done }">
+      <li v-for="(s, i) in steps" :key="s.title" class="bg-base-100/80 border-base-300 flex flex-col gap-2 rounded-xl border p-3" :class="{ 'opacity-75': s.done }">
         <div class="flex items-center gap-2">
           <span class="grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold" :class="s.done ? 'bg-success text-success-content' : 'bg-base-300'">
             <Icon v-if="s.done" name="fa6-solid:check" size="11" />
@@ -17,7 +17,7 @@
           <p class="text-sm font-medium">{{ s.title }}</p>
         </div>
         <p class="text-base-content/60 text-xs">{{ s.text }}</p>
-        <button v-if="!s.done" class="btn btn-primary btn-xs mt-auto self-start" @click="s.action()">{{ s.cta }}</button>
+        <button v-if="!s.done" class="btn btn-soft btn-primary btn-xs mt-auto self-start" @click="s.action()">{{ s.cta }}</button>
       </li>
     </ol>
   </section>

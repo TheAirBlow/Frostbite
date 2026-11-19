@@ -2,21 +2,21 @@
   <form v-if="form" class="flex max-w-3xl flex-col gap-5" novalidate @submit.prevent="save()">
     <Section :title="$t('Telegram')" hint="Alerts for admins, and optionally for users who linked their account.">
       <div class="flex flex-col gap-3">
-        <ToggleRow v-model="form.telegram.enabled" label="Enable the bot" hint="Create a bot with @BotFather and paste its token. It answers /usage and /link for users and has admin commands for the chats below." />
+        <ToggleRow v-model="form.telegram.enabled" label="Enable the bot" hint="A bot token from @BotFather." />
         <template v-if="form.telegram.enabled">
           <FormField label="Bot token" name="telegram.token" :hint="form.token_set ? 'A token is saved. Leave empty to keep it.' : ''"><input v-model="form.telegram.token" type="password" class="input w-full font-mono" autocomplete="off" :placeholder="form.token_set ? '••••••••' : '123456:ABC…'"></FormField>
           <FormField label="Admin chat ids" name="telegram.admin_ids" hint="Numeric ids. Message the bot and send /start to see yours.">
             <ChipInput :model-value="form.telegram.admin_ids.map(String)" placeholder="123456789" :check="checkChatId" @update:model-value="form.telegram.admin_ids = $event.map(Number)" />
           </FormField>
-          <ToggleRow v-model="form.telegram.notify_users" label="Also message users" hint="Users who opened the Telegram link on their subscription page hear about expiry and usage themselves." />
+          <ToggleRow v-model="form.telegram.notify_users" label="Also message users" hint="Users who linked Telegram get their own expiry and usage alerts." />
           <EventPicker v-model="form.telegram.events" label="Admin alerts" />
           <Advanced><FormField label="API address" name="telegram.api_base" hint="Only for self hosted bot api servers or a proxy."><input v-model="form.telegram.api_base" class="input w-full font-mono" :placeholder="$t('https://api.telegram.org')"></FormField></Advanced>
         </template>
       </div>
     </Section>
 
-    <Section :title="$t('Webhooks')" hint="Frostbite POSTs a json event to each address. With a secret, X-Frostbite-Signature carries an HMAC-SHA256 of the body.">
-      <template #actions><button type="button" class="btn btn-sm" @click="form.webhooks.push({ url: '', secret: '', events: [], enabled: true })"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button></template>
+    <Section :title="$t('Webhooks')">
+      <template #actions><button type="button" class="btn btn-sm btn-soft btn-primary" @click="form.webhooks.push({ url: '', secret: '', events: [], enabled: true })"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button></template>
       <div class="flex flex-col gap-3">
         <div v-for="(h, i) in form.webhooks" :key="i" class="bg-base-100 border-base-300 rounded-xl border p-3">
           <div class="flex items-center gap-2">

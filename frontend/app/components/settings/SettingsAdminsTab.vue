@@ -1,15 +1,15 @@
 <template>
   <div class="flex max-w-3xl flex-col gap-4">
     <div class="flex items-center justify-between gap-2">
-      <p class="text-base-content/60 text-sm"><b>{{ $t('Owners') }}</b> {{ $t('can do everything.') }} <b>{{ $t('Admins') }}</b> {{ $t('manage servers and users.') }} <b>{{ $t('Resellers') }}</b> {{ $t('only see and manage their own users, within a quota.') }}</p>
+      <p class="text-base-content/60 text-sm"><b>{{ $t('Owners') }}</b> {{ $t('can do everything.') }} <b>{{ $t('Admins') }}</b> {{ $t('manage servers and users.') }} <b>{{ $t('Resellers') }}</b> {{ $t('only see and manage their own users, within a quota.') }} <b>{{ $t('Node admins') }}</b> {{ $t('run the nodes they are given and the users on them.') }}</p>
       <button class="btn btn-sm btn-primary shrink-0" @click="edit = blank()"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button>
     </div>
     <Skeleton v-if="pending" :rows="3" :height="56" />
     <div v-else class="flex flex-col gap-2">
-      <button v-for="a in admins" :key="a.id" class="surface hover:border-primary/50 flex items-center gap-3 p-3 text-left transition" @click="edit = { ...a, password: '' }">
+      <button v-for="a in admins" :key="a.id" class="surface hover:border-primary/50 flex items-center gap-3 p-3 text-left transition" @click="edit = { ...a, node_ids: [...a.node_ids], password: '' }">
         <span class="bg-base-300 grid size-9 place-items-center rounded-xl text-sm font-semibold uppercase">{{ a.username[0] }}</span>
-        <div class="min-w-0 flex-1"><p class="font-medium">{{ a.username }} <span v-if="a.id === auth.me?.id" class="badge badge-xs badge-primary badge-soft">{{ $t('you') }}</span></p><p class="text-base-content/50 text-xs">{{ a.note || '—' }}<template v-if="a.role === 'reseller' && a.user_quota"> · up to {{ a.user_quota }} users</template><template v-if="a.role === 'reseller' && a.traffic_quota"> · {{ formatBytes(a.traffic_quota, 0) }} to give out</template></p></div>
-        <span class="badge badge-sm capitalize" :class="a.role === 'owner' ? 'badge-secondary badge-soft' : a.role === 'admin' ? 'badge-primary badge-soft' : 'badge-ghost'">{{ a.role }}</span>
+        <div class="min-w-0 flex-1"><p class="font-medium">{{ a.username }} <span v-if="a.id === auth.me?.id" class="badge badge-xs badge-primary badge-soft">{{ $t('you') }}</span></p><p class="text-base-content/50 text-xs">{{ a.note || '—' }}<template v-if="a.role === 'reseller' && a.user_quota"> · up to {{ a.user_quota }} users</template><template v-if="a.role === 'reseller' && a.traffic_quota"> · {{ formatBytes(a.traffic_quota, 0) }} to give out</template><template v-if="a.role === 'node_admin'"> · {{ nodeNames(a.node_ids) }}</template></p></div>
+        <span class="badge badge-sm capitalize" :class="a.role === 'owner' ? 'badge-secondary badge-soft' : a.role === 'admin' ? 'badge-primary badge-soft' : 'badge-ghost'">{{ roleLabels[a.role] }}</span>
         <span v-if="!a.enabled" class="badge badge-sm badge-neutral">{{ $t('disabled') }}</span>
       </button>
     </div>
@@ -18,10 +18,20 @@
       <form id="admin-form" class="flex flex-col gap-3" novalidate @submit.prevent="save()">
         <FormField v-if="!edit.id" label="Username" name="username" required hint="2 to 32 characters: lowercase letters, digits, dot, dash or underscore."><input v-model="edit.username" class="input w-full" autocomplete="off"></FormField>
         <FormField v-if="!edit.id" label="Password" name="password" required hint="At least 8 characters."><input v-model="edit.password" type="password" class="input w-full" autocomplete="new-password"></FormField>
-        <FormField label="Role" name="role"><select v-model="edit.role" class="select w-full"><option value="owner">{{ $t('Owner') }}</option><option value="admin">{{ $t('Admin') }}</option><option value="reseller">{{ $t('Reseller') }}</option></select></FormField>
+        <FormField label="Role" name="role"><select v-model="edit.role" class="select w-full"><option value="owner">{{ $t('Owner') }}</option><option value="admin">{{ $t('Admin') }}</option><option value="reseller">{{ $t('Reseller') }}</option><option value="node_admin">{{ $t('Node admin') }}</option></select></FormField>
+        <FormField v-if="edit.role === 'node_admin'" label="Nodes" name="node_ids" required hint="They manage these nodes, their daemons, inbounds and hosts, and who can connect to them." class="gap-2">
+          <p v-if="!nodes?.length" class="text-base-content/50 text-sm">{{ $t('There are no nodes yet.') }}</p>
+          <div v-else class="surface flex max-h-56 flex-col gap-1 overflow-y-auto p-2">
+            <label v-for="n in nodes" :key="n.id" class="hover:bg-base-300/40 flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5">
+              <input v-model="edit.node_ids" type="checkbox" class="checkbox checkbox-sm checkbox-primary" :value="n.id">
+              <span class="min-w-0 flex-1 truncate text-sm">{{ flag(n.country) }} {{ n.name }}</span>
+              <span class="text-base-content/50 truncate font-mono text-xs">{{ n.address }}</span>
+            </label>
+          </div>
+        </FormField>
         <template v-if="edit.role === 'reseller'">
           <FormField label="User quota" name="user_quota" hint="Empty means no cap."><input v-model.number="edit.user_quota" type="number" min="0" class="input w-full"></FormField>
-          <FormField label="Traffic to hand out" name="traffic_quota" hint="The total of all their users' limits. Setting it also stops them creating unlimited users."><ByteInput :model-value="edit.traffic_quota ?? 0" @update:model-value="edit.traffic_quota = $event || null" /></FormField>
+          <FormField label="Traffic to hand out" name="traffic_quota" hint="The sum of their users' limits."><ByteInput :model-value="edit.traffic_quota ?? 0" @update:model-value="edit.traffic_quota = $event || null" /></FormField>
         </template>
         <FormField label="Note" name="note"><input v-model="edit.note" class="input w-full"></FormField>
         <ToggleRow v-if="edit.id" v-model="edit.enabled" label="Enabled" />
@@ -40,13 +50,16 @@
 </template>
 
 <script setup lang="ts">
-import type { Admin } from '~/types/api'
+import type { Admin, PanelNode } from '~/types/api'
 
 type Draft = Partial<Admin> & { password: string }
 const auth = useAuthStore()
 const { data: admins, pending, refresh } = useAsyncData('admins', () => useApi<Admin[]>('/admins'))
+const { data: nodes } = useAsyncData('nodes', () => useApi<PanelNode[]>('/nodes'))
 const edit = ref<Draft | null>(null)
-const blank = (): Draft => ({ username: '', password: '', role: 'admin', enabled: true, user_quota: null, traffic_quota: null, note: '' })
+const blank = (): Draft => ({ username: '', password: '', role: 'admin', enabled: true, user_quota: null, traffic_quota: null, node_ids: [], note: '' })
+const roleLabels: Record<string, string> = { owner: 'Owner', admin: 'Admin', reseller: 'Reseller', node_admin: 'Node admin' }
+const nodeNames = (ids: number[]) => (nodes.value ?? []).filter(n => ids.includes(n.id)).map(n => n.name).join(', ') || `${ids.length} nodes`
 
 const formApi = useForm(edit, (d) => {
   const e: Record<string, Check> = {}
@@ -57,20 +70,23 @@ const formApi = useForm(edit, (d) => {
   else if (d.password) {
     e.password = checkPassword(d.password)
   }
+  if (d.role === 'node_admin' && !d.node_ids?.length) e.node_ids = 'Pick at least one node'
   if (d.role === 'reseller') {
     if (d.user_quota !== null && d.user_quota !== undefined && String(d.user_quota) !== '') e.user_quota = checkInt(d.user_quota, 0, 1_000_000, 'a number')
   }
   return problems(e)
 })
 
+const nodeIDs = (d: Draft) => (d.role === 'node_admin' ? d.node_ids ?? [] : [])
+
 const { run: save } = useAsyncAction(async () => {
   const d = edit.value!
   if (d.id) {
-    await useApi(`/admins/${d.id}`, { method: 'PUT', body: { role: d.role, enabled: d.enabled, user_quota: d.user_quota || null, traffic_quota: d.traffic_quota || null, note: d.note } })
+    await useApi(`/admins/${d.id}`, { method: 'PUT', body: { role: d.role, enabled: d.enabled, user_quota: d.user_quota || null, traffic_quota: d.traffic_quota || null, node_ids: nodeIDs(d), note: d.note } })
     if (d.password) await useApi(`/admins/${d.id}/password`, { method: 'PUT', body: { new: d.password } })
   }
   else {
-    await useApi('/admins', { method: 'POST', body: { username: d.username, password: d.password, role: d.role, user_quota: d.user_quota || null, traffic_quota: d.traffic_quota || null, note: d.note } })
+    await useApi('/admins', { method: 'POST', body: { username: d.username, password: d.password, role: d.role, user_quota: d.user_quota || null, traffic_quota: d.traffic_quota || null, node_ids: nodeIDs(d), note: d.note } })
   }
   edit.value = null
   await refresh()

@@ -13,7 +13,7 @@
   --color-base-100: oklch(21% 0.032 258);
   --color-base-200: oklch(17.5% 0.03 258);
   --color-base-300: oklch(14% 0.026 258);
-  --color-base-content: oklch(92% 0.014 240);
+  --color-base-content: oklch(95% 0.012 240);
   --color-primary: oklch(79% 0.125 228);
   --color-primary-content: oklch(19% 0.04 245);
   --color-secondary: oklch(73% 0.14 288);
@@ -87,6 +87,11 @@ html {
 
 /* Tailwind v4 preflight no longer sets a pointer cursor on buttons */
 @layer base {
+  /* daisyUI's neutral button fills with base-200, the same tone as .surface cards, so it vanishes on them. */
+  .btn:not(.btn-outline, .btn-dash, .btn-soft, .btn-ghost, .btn-link) {
+    --btn-color: color-mix(in oklab, var(--color-base-content) 12%, var(--color-base-200));
+  }
+
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
@@ -123,6 +128,12 @@ input, select, textarea {
 /* soft frosted surface used by cards that sit on the ambient glow */
 .surface {
   @apply bg-base-200 border-base-300 rounded-box border;
+}
+
+/* a surface nested in another surface needs its own tone, or the inner edge disappears */
+.surface .surface {
+  background-color: color-mix(in oklab, var(--color-base-content) 5%, var(--color-base-200));
+  border-color: color-mix(in oklab, var(--color-base-content) 10%, var(--color-base-200));
 }
 
 .glow {

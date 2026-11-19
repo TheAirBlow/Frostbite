@@ -133,3 +133,64 @@ func TestOlderFlatDestinationBecomesTheMainRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRouteKindsAreValidated(t *testing.T) {
+	base := TurnableRouteSpec{ID: "a", Target: "127.0.0.1:1", Socket: "udp"}
+	with := func(f func(r *TurnableRouteSpec)) []TurnableRouteSpec {
+		r := base
+		f(&r)
+		return []TurnableRouteSpec{r}
+	}
+	cases := map[string]struct {
+		routes []TurnableRouteSpec
+		field  string
+	}{
+		"external needs nothing more": {with(func(r *TurnableRouteSpec) { r.Kind = RouteExternal }), ""},
+		"inbound complete":            {with(func(r *TurnableRouteSpec) { r.Kind, r.InboundID, r.LocalPort = RouteInbound, 7, 10800 }), ""},
+		"inbound without inbound":     {with(func(r *TurnableRouteSpec) { r.Kind, r.LocalPort = RouteInbound, 10800 }), "options.t_routes.0.inbound_id"},
+		"inbound without port":        {with(func(r *TurnableRouteSpec) { r.Kind, r.InboundID = RouteInbound, 7 }), "options.t_routes.0.local_port"},
+		"custom complete": {with(func(r *TurnableRouteSpec) {
+			r.Kind, r.URL, r.LocalPort = RouteCustom, "vless://{uuid}@{host}:{port}#{name}", 10800
+		}), ""},
+		"custom without url":    {with(func(r *TurnableRouteSpec) { r.Kind, r.LocalPort = RouteCustom, 10800 }), "options.t_routes.0.url"},
+		"custom without scheme": {with(func(r *TurnableRouteSpec) { r.Kind, r.URL, r.LocalPort = RouteCustom, "{host}:{port}", 10800 }), "options.t_routes.0.url"},
+		"custom unknown placeholder": {with(func(r *TurnableRouteSpec) {
+			r.Kind, r.URL, r.LocalPort = RouteCustom, "vless://{nope}@{host}:{port}", 10800
+		}), "options.t_routes.0.url"},
+		"unknown kind": {with(func(r *TurnableRouteSpec) { r.Kind = "magic" }), "options.t_routes.0.kind"},
+		"same local port twice": {[]TurnableRouteSpec{
+			{ID: "a", Target: "127.0.0.1:1", Socket: "udp", Kind: RouteInbound, InboundID: 7, LocalPort: 10800},
+			{ID: "b", Target: "127.0.0.1:2", Socket: "udp", Kind: RouteInbound, InboundID: 8, LocalPort: 10800},
+		}, "options.t_routes.1.local_port"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			o := turnableOptions(t)
+			o.TTarget, o.TSocket = "", ""
+			o.TRoutes = c.routes
+			err := o.validateTurnable()
+			if c.field == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || fieldOf(err) != c.field {
+				t.Fatalf("want an error on %s, got %v", c.field, err)
+			}
+		})
+	}
+}
+
+func TestRouteURLPlaceholders(t *testing.T) {
+	got := ExpandRouteURL("vless://{uuid}@{host}:{port}?x={password}#{name}", map[string]string{
+		"uuid": "u-1", "host": "127.0.0.1", "port": "10800", "password": "p w&d", "name": "Frankfurt ✓",
+	})
+	want := "vless://u-1@127.0.0.1:10800?x=p+w%26d#Frankfurt+%E2%9C%93"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if ExpandRouteURL("a://{unknown}", nil) != "a://{unknown}" {
+		t.Fatal("an unknown placeholder is left as it is")
+	}
+}

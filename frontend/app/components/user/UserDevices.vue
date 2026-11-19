@@ -12,7 +12,7 @@
         <div class="min-w-0 flex-1">
           <p class="truncate font-medium">{{ d.model || d.platform || 'Unknown device' }}</p>
           <p class="text-base-content/50 truncate text-xs">{{ [d.platform, d.os_version].filter(Boolean).join(' ') }} · seen {{ formatRelative(d.last_seen) }}</p>
-          <p class="text-base-content/40 truncate font-mono text-[11px]">{{ d.hwid }}</p>
+          <p class="text-base-content/60 truncate font-mono text-[11px]">{{ d.hwid }}</p>
         </div>
         <ConfirmButton class="btn btn-ghost btn-xs text-error" confirm-label="Forget?" @confirmed="remove(d.id)"><Icon name="fa6-solid:trash" size="12" /></ConfirmButton>
       </div>

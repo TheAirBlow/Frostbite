@@ -33,6 +33,30 @@ type Runtime struct {
 	tracker  *tracker
 	cur      *spec.Daemon
 	slots    map[string]*slotState
+
+	onDown, onStart func()
+}
+
+// SetHooks registers callbacks for the guard, see agent.Supervised.
+func (r *Runtime) SetHooks(down, starting func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onDown, r.onStart = down, starting
+}
+
+// Alive reports whether an instance is running.
+func (r *Runtime) Alive() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.instance != nil
+}
+
+// Halt stops sing-box until the next Apply or Restart.
+func (r *Runtime) Halt() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stopLocked()
+	slog.Error("sing-box halted by the guard, it stays off until the panel pushes a config or asks for a restart")
 }
 
 // New creates a runtime. dataDir holds the log and the last config.
@@ -83,6 +107,9 @@ func (r *Runtime) Apply(ctx context.Context, d spec.Daemon, rendered []byte) err
 		prevSpec = *r.cur
 	}
 	r.stopLocked()
+	if r.onStart != nil {
+		r.onStart()
+	}
 	if err := next.Start(); err != nil {
 		cancel()
 		_ = next.Close()
@@ -95,6 +122,9 @@ func (r *Runtime) Apply(ctx context.Context, d spec.Daemon, rendered []byte) err
 					oldCancel()
 				}
 			}
+		}
+		if r.instance == nil && r.onDown != nil {
+			r.onDown()
 		}
 		return fmt.Errorf("sing-box failed to start: %w", err)
 	}

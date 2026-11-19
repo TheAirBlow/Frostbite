@@ -1,6 +1,6 @@
 <template>
   <div class="flex max-w-3xl flex-col gap-5">
-    <Section :title="$t('Back up')" hint="Everything except sessions, tokens and the audit log: nodes, daemons, inbounds, users, plans, settings and admin accounts.">
+    <Section :title="$t('Back up')">
       <div class="flex flex-wrap gap-2">
         <a href="/api/backup/download" class="btn btn-primary btn-sm"><Icon name="fa6-solid:download" size="12" /> {{ $t('Download a backup') }}</a>
         <a href="/api/backup/download?history=1" class="btn btn-sm"><Icon name="fa6-solid:download" size="12" /> {{ $t('With traffic history') }}</a>
@@ -35,7 +35,7 @@
     </Section>
 
     <Section :title="$t('Restore')" hint="Replaces everything with the contents of a backup file.">
-      <div class="alert alert-warning alert-soft mb-3 text-sm"><Icon name="fa6-solid:triangle-exclamation" size="14" /><span>{{ $t('Current data is overwritten and everyone is signed out, you included. Sign in with an account from the backup afterwards.') }}</span></div>
+      <div class="alert alert-warning alert-soft mb-3 text-sm"><Icon name="fa6-solid:triangle-exclamation" size="14" /><span>{{ $t('Overwrites all data and signs everyone out.') }}</span></div>
       <FormField label="Backup file" name="file">
         <input ref="picker" type="file" accept=".gz,.json,application/gzip,application/json" class="file-input file-input-sm w-full" @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null">
       </FormField>

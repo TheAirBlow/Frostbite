@@ -42,7 +42,7 @@
         <span v-if="testResult" class="text-xs" :class="testResult.ok ? 'text-success' : 'text-error'">{{ testResult.ok ? testResult.output : testResult.error }}</span>
       </div>
       <p v-if="needsCert" class="text-base-content/60 text-xs">
-        {{ $t('No certificate on the node yet? Leave the paths as they are. The daemon creates a self signed one so it can start, and you can drop a real one at the same place later.') }}
+        {{ $t('No certificate yet? The daemon makes a self-signed one.') }}
       </p>
     </form>
 
@@ -104,6 +104,7 @@ const answerFor: Record<string, string> = {
   'options.t_routes.0.target': 'params.target',
   'options.t_routes.0.socket': 'params.socket',
   'security.reality.dest': 'params.dest',
+  'security.reality.server_names': 'params.server_names',
   'options.mt_domain': 'params.domain',
   'security.acme.domain': 'params.sni',
   'security.sni': 'params.sni',
@@ -126,6 +127,7 @@ const formApi = useForm(values, (v) => {
     else if (p.kind === 'number') e[at] = checkInt(val, 0, undefined, 'a number')
     else if (p.key === 'target') e[at] = checkHostPort(val, { ipOnly: true })
     else if (p.key === 'dest') e[at] = checkHostPort(val)
+    else if (p.key === 'server_names') e[at] = checkEach(val.split(/[\s,]+/).filter(Boolean), n => (/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(n) ? undefined : 'Not a valid server name'))
     else if (p.key === 'sni' || p.key === 'domain') e[at] = checkDomain(val)
     else if (p.key === 'email') e[at] = checkEmail(val)
     else if (p.key === 'subnet') e[at] = checkCidr(val)
@@ -141,7 +143,7 @@ function custom() {
 const testResult = ref<CommandResult | null>(null)
 const { loading: testing, run: test } = useAsyncAction(async () => {
   try {
-    testResult.value = await useApi<CommandResult>('/tools/test-reality', { method: 'POST', body: { daemon_id: daemonId.value, dest: values.value.dest || preset.value?.params.find(p => p.key === 'dest')?.default } })
+    testResult.value = await useApi<CommandResult>('/tools/test-reality', { method: 'POST', body: { daemon_id: daemonId.value, dest: values.value.dest || preset.value?.params.find(p => p.key === 'dest')?.default, sni: (values.value.server_names ?? '').split(/[\s,]+/).filter(Boolean)[0] ?? '' } })
   }
   catch (e) {
     testResult.value = { id: 0, ok: false, error: errorMessage(e) }

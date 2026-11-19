@@ -6,6 +6,15 @@ export const useAuthStore = defineStore('auth', () => {
   const authed = computed(() => me.value !== null)
   const isOwner = computed(() => me.value?.role === 'owner')
   const isReseller = computed(() => me.value?.role === 'reseller')
+  const isNodeAdmin = computed(() => me.value?.role === 'node_admin')
+  // pages the role may open, null for all of them
+  const pages = computed<string[] | null>(() => {
+    if (isReseller.value) return ['/users']
+    if (isNodeAdmin.value) return ['/users', '/nodes', '/inbounds', '/routing', '/bridges', '/access']
+    return null
+  })
+  const canVisit = (path: string) => !pages.value || pages.value.includes(path)
+  const home = computed(() => pages.value?.[0] ?? '/')
 
   async function fetchMe() {
     try {
@@ -30,5 +39,5 @@ export const useAuthStore = defineStore('auth', () => {
     await navigateTo('/login')
   }
 
-  return { me, ready, authed, isOwner, isReseller, fetchMe, login, logout }
+  return { me, ready, authed, isOwner, isReseller, isNodeAdmin, canVisit, home, fetchMe, login, logout }
 })

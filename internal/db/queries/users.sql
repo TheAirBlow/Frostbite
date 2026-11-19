@@ -20,6 +20,10 @@ WHERE (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status))
   AND (sqlc.narg(owner)::bigint IS NULL OR owner_id = sqlc.narg(owner))
   AND (sqlc.narg(tag)::text IS NULL OR sqlc.narg(tag) = ANY(tags))
   AND (sqlc.narg(squad)::bigint IS NULL OR EXISTS (SELECT 1 FROM user_squads us WHERE us.user_id = users.id AND us.squad_id = sqlc.narg(squad)))
+  AND (sqlc.narg(node_admin)::bigint IS NULL OR owner_id = sqlc.narg(node_admin) OR EXISTS (
+       SELECT 1 FROM user_squads us JOIN squad_inbounds si ON si.squad_id = us.squad_id JOIN inbounds i ON i.id = si.inbound_id
+       JOIN daemons d ON d.id = i.daemon_id JOIN admin_nodes an ON an.node_id = d.node_id
+       WHERE us.user_id = users.id AND an.admin_id = sqlc.narg(node_admin)))
 ORDER BY
   CASE WHEN sqlc.arg(sort)::text = 'used' THEN traffic_used END DESC NULLS LAST,
   CASE WHEN sqlc.arg(sort)::text = 'expire' THEN expire_at END ASC NULLS LAST,

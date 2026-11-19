@@ -9,34 +9,47 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"time"
 
 	"frostbite/internal/spec"
 )
 
-// ensureCerts writes a self signed certificate for any TLS inbound whose files are missing, so a fresh setup starts.
-// Clients must be told to allow insecure certificates until a real one is dropped in the same place.
-func ensureCerts(d spec.Daemon) {
-	for _, in := range d.Inbounds {
-		s := in.Security
-		if s.Type != spec.SecurityTLS || s.CertPath == "" || s.KeyPath == "" {
+// ensureCerts points TLS inbounds whose certificate files are missing at a self signed stand-in under dir, so a fresh
+// setup starts without writing into folders another tool owns. It returns the tags it redirected.
+// Clients must allow insecure certificates until the real files show up, which the agent watches for.
+func ensureCerts(d *spec.Daemon, dir string) []string {
+	var redirected []string
+	for i := range d.Inbounds {
+		in := &d.Inbounds[i]
+		s := &in.Security
+		if s.Type != spec.SecurityTLS || s.CertPath == "" || s.KeyPath == "" || s.ACME != nil || s.Caddy != nil {
 			continue
 		}
 		if fileExists(s.CertPath) && fileExists(s.KeyPath) {
 			continue
 		}
-		if err := selfSigned(s.CertPath, s.KeyPath, s.SNI); err != nil {
-			slog.Warn("could not create a placeholder certificate", "inbound", in.Tag, "err", err)
-			continue
+		cert, key := filepath.Join(dir, in.Tag, "fullchain.pem"), filepath.Join(dir, in.Tag, "privkey.pem")
+		if !fileExists(cert) || !fileExists(key) {
+			if err := selfSigned(cert, key, s.SNI); err != nil {
+				slog.Warn("could not create a placeholder certificate", "inbound", in.Tag, "err", err)
+				continue
+			}
 		}
-		slog.Warn("no certificate found, created a self signed one", "inbound", in.Tag, "cert", s.CertPath)
+		slog.Warn("certificate not found, serving a self signed stand-in until it appears", "inbound", in.Tag, "cert", s.CertPath)
+		s.CertPath, s.KeyPath = cert, key
+		redirected = append(redirected, in.Tag)
 	}
+	return redirected
 }
 
 // fileExists reports whether path is a readable file.
@@ -86,8 +99,9 @@ func selfSigned(certPath, keyPath, name string) error {
 	return os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600)
 }
 
-// testTLS checks that dest completes a TLS 1.3 handshake with h2, which is what a REALITY target must do.
-func testTLS(ctx context.Context, dest string) (string, error) {
+// testTLS checks that dest completes a TLS 1.3 handshake with h2, which is what a REALITY target must do. sni is the name
+// to ask for, the target's host when empty, and xver sends a LOCAL PROXY header first for targets that expect one.
+func testTLS(ctx context.Context, dest, sni string, xver int) (string, error) {
 	if dest == "" {
 		return "", fmt.Errorf("no target given")
 	}
@@ -95,25 +109,60 @@ func testTLS(ctx context.Context, dest string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("target must look like host:port")
 	}
-
-	d := tls.Dialer{
-		NetDialer: &net.Dialer{Timeout: 8 * time.Second},
-		Config:    &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12, NextProtos: []string{"h2", "http/1.1"}},
+	if sni == "" {
+		sni = host
 	}
+
 	start := time.Now()
-	conn, err := d.DialContext(ctx, "tcp", dest)
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	raw, err := (&net.Dialer{}).DialContext(ctx, "tcp", dest)
 	if err != nil {
-		return "", err
+		return "", explainDial(err, dest, sni)
 	}
-	defer conn.Close()
+	defer raw.Close()
+	if xver > 0 {
+		if _, err := raw.Write(proxyHeader(xver, nil, nil)); err != nil {
+			return "", err
+		}
+	}
+	// the certificate is checked by hand so a mismatch is reported rather than hiding the rest of the result
+	conn := tls.Client(raw, &tls.Config{ServerName: sni, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, NextProtos: []string{"h2", "http/1.1"}})
+	if err := conn.HandshakeContext(ctx); err != nil {
+		return "", explainDial(err, dest, sni)
+	}
 
-	st := conn.(*tls.Conn).ConnectionState()
-	out := fmt.Sprintf("%s in %dms, %s, alpn %q", dest, time.Since(start).Milliseconds(), tls.VersionName(st.Version), st.NegotiatedProtocol)
+	st := conn.ConnectionState()
+	out := fmt.Sprintf("%s (%s) in %dms, %s, alpn %q", dest, sni, time.Since(start).Milliseconds(), tls.VersionName(st.Version), st.NegotiatedProtocol)
 	if st.Version != tls.VersionTLS13 {
 		return out, fmt.Errorf("the target does not speak TLS 1.3, REALITY needs it")
 	}
 	if st.NegotiatedProtocol != "h2" {
 		return out, fmt.Errorf("the target does not offer h2, pick another one")
 	}
+	if len(st.PeerCertificates) > 0 && net.ParseIP(sni) == nil {
+		if err := st.PeerCertificates[0].VerifyHostname(sni); err != nil {
+			return out, fmt.Errorf("the target's certificate is not for %s", sni)
+		}
+	}
 	return out, nil
+}
+
+// explainDial turns the errors a handshake probe runs into into something a person can act on.
+func explainDial(err error, dest, sni string) error {
+	var ne net.Error
+	switch {
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return fmt.Errorf("nothing is listening on %s", dest)
+	case errors.As(err, &ne) && ne.Timeout(), errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("%s did not answer in time. Check the address and that the node can reach it", dest)
+	case errors.Is(err, syscall.ECONNRESET), errors.Is(err, io.EOF), strings.Contains(err.Error(), "connection reset"),
+		strings.Contains(err.Error(), "remote error: tls:"):
+		hint := "it may expect a PROXY header, or it is not a TLS site"
+		if ip := net.ParseIP(sni); ip != nil {
+			hint = "it probably needs a server name and none was sent. Add one under Server names"
+		}
+		return fmt.Errorf("%s refused the handshake (%s)", dest, hint)
+	}
+	return err
 }

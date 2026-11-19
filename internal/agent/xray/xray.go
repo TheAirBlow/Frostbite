@@ -32,9 +32,37 @@ type Runtime struct {
 	mu       sync.Mutex
 	cmd      *exec.Cmd
 	cancel   context.CancelFunc
+	exited   chan struct{} // closed once the running cmd has exited
 	current  *spec.Daemon
 	logs     *logs.Ring
 	stopping bool
+	failures int  // unexpected exits in a row, for backoff
+	halted   bool // stopped by the guard until the next apply or restart from the panel
+
+	onDown, onStart func()
+}
+
+// SetHooks registers callbacks for the guard, see agent.Supervised.
+func (r *Runtime) SetHooks(down, starting func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onDown, r.onStart = down, starting
+}
+
+// Halt stops xray and keeps it stopped until the next Apply or Restart.
+func (r *Runtime) Halt() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.halted = true
+	r.stopLocked()
+	slog.Error("xray halted by the guard, it stays off until the panel pushes a config or asks for a restart")
+}
+
+// Alive reports whether xray is running.
+func (r *Runtime) Alive() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cmd != nil
 }
 
 // New creates a runtime. bin is the xray executable, dataDir holds its config.
@@ -79,6 +107,7 @@ func (r *Runtime) Apply(ctx context.Context, d spec.Daemon, rendered []byte) err
 		}
 	}
 
+	r.halted = false
 	if err := r.check(ctx, rendered); err != nil {
 		return err
 	}
@@ -225,41 +254,60 @@ func (r *Runtime) restartLocked() error {
 	r.stopLocked()
 	r.stopping = false
 
+	if r.onStart != nil {
+		r.onStart()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, r.bin, "run", "-c", r.configPath())
 	cmd.Stdout, cmd.Stderr = r.logs, r.logs
 	if err := cmd.Start(); err != nil {
 		cancel()
+		r.downLocked()
 		return fmt.Errorf("starting xray: %w", err)
 	}
-	r.cmd, r.cancel = cmd, cancel
+	exited := make(chan struct{})
+	r.cmd, r.cancel, r.exited = cmd, cancel, exited
 	slog.Info("xray started", "pid", cmd.Process.Pid)
 
-	go r.watch(cmd)
+	go r.watch(cmd, time.Now(), exited)
 	return nil
 }
 
+// downLocked tells the guard xray is down and schedules another start, backing off while it keeps failing.
+func (r *Runtime) downLocked() {
+	if r.onDown != nil {
+		r.onDown()
+	}
+	r.failures++
+	delay := min(3*time.Second<<min(r.failures-1, 4), time.Minute)
+	go func() {
+		time.Sleep(delay)
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.cmd == nil && !r.stopping && !r.halted {
+			if err := r.restartLocked(); err != nil {
+				slog.Error("restarting xray failed", "err", err, "attempt", r.failures)
+			}
+		}
+	}()
+}
+
 // watch restarts xray if it dies on its own.
-func (r *Runtime) watch(cmd *exec.Cmd) {
+func (r *Runtime) watch(cmd *exec.Cmd, started time.Time, exited chan struct{}) {
 	err := cmd.Wait()
+	close(exited)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.cmd != cmd || r.stopping {
+	if r.cmd != cmd || r.stopping || r.halted {
 		return
 	}
 	slog.Error("xray exited unexpectedly", "err", err)
 	r.cmd = nil
-	go func() {
-		time.Sleep(3 * time.Second)
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		if r.cmd == nil && !r.stopping {
-			if err := r.restartLocked(); err != nil {
-				slog.Error("restarting xray failed", "err", err)
-			}
-		}
-	}()
+	if time.Since(started) > time.Minute {
+		r.failures = 0
+	}
+	r.downLocked()
 }
 
 // stopLocked stops the running instance. The caller holds the lock.
@@ -267,15 +315,14 @@ func (r *Runtime) stopLocked() {
 	if r.cmd == nil {
 		return
 	}
-	cmd := r.cmd
+	cmd, done := r.cmd, r.exited
 	r.cmd = nil
 	r.cancel()
-	done := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		_ = cmd.Process.Kill()
+		<-done
 	}
 }
 
@@ -286,6 +333,7 @@ func (r *Runtime) Restart(ctx context.Context) error {
 	if _, err := os.Stat(r.configPath()); err != nil {
 		return errors.New("there is no config to run yet")
 	}
+	r.halted = false
 	return r.restartLocked()
 }
 

@@ -6,7 +6,7 @@
 
     <template v-if="tab === 'squads'">
       <div class="mb-3 flex items-center justify-between gap-2">
-        <p class="text-base-content/60 text-sm">{{ $t('A squad is a bundle of inbounds. Put users in squads to decide where they can connect.') }}</p>
+        <p class="text-base-content/60 text-sm">{{ auth.isNodeAdmin ? $t('Squads built only from your nodes. Add anyone to them, or take them off.') : $t('A squad is a bundle of inbounds. Put users in squads to decide where they can connect.') }}</p>
         <button class="btn btn-primary btn-sm" @click="side.open('squad')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('New squad') }}</button>
       </div>
       <Skeleton v-if="!squads" :rows="2" :height="120" />
@@ -29,11 +29,11 @@
     <template v-else>
       <div class="mb-3 flex items-center justify-between gap-2">
         <p class="text-base-content/60 text-sm">{{ $t('A plan fills in a new user\'s limits, validity and squads in one click.') }}</p>
-        <button class="btn btn-primary btn-sm" @click="side.open('plan')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('New plan') }}</button>
+        <button v-if="!auth.isNodeAdmin" class="btn btn-primary btn-sm" @click="side.open('plan')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('New plan') }}</button>
       </div>
       <Skeleton v-if="!plans" :rows="2" :height="120" />
       <div v-else-if="plans.length" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <button v-for="p in plans" :key="p.id" class="surface hover:border-primary/50 flex flex-col gap-2 p-4 text-left transition" @click="side.open('plan', p.id)">
+        <button v-for="p in plans" :key="p.id" class="surface flex flex-col gap-2 p-4 text-left transition" :class="auth.isNodeAdmin ? 'cursor-default' : 'hover:border-primary/50'" :disabled="auth.isNodeAdmin" @click="side.open('plan', p.id)">
           <p class="font-display text-xl font-semibold">{{ p.name }}</p>
           <p class="text-2xl font-semibold">{{ p.traffic_limit ? formatBytes(p.traffic_limit, 0) : 'Unlimited' }}</p>
           <ul class="text-base-content/60 text-sm">
@@ -44,7 +44,7 @@
           </ul>
         </button>
       </div>
-      <div v-else class="surface"><EmptyState icon="fa6-solid:box" :title="$t('No plans yet')" text="Plans are optional. They save typing when you create many similar users."><button class="btn btn-primary btn-sm" @click="side.open('plan')">{{ $t('New plan') }}</button></EmptyState></div>
+      <div v-else class="surface"><EmptyState icon="fa6-solid:box" :title="$t('No plans yet')" text="Plans are optional. They save typing when you create many similar users."><button v-if="!auth.isNodeAdmin" class="btn btn-primary btn-sm" @click="side.open('plan')">{{ $t('New plan') }}</button></EmptyState></div>
     </template>
   </div>
 </template>
@@ -55,6 +55,7 @@ import type { Inbound, Plan, Squad } from '~/types/api'
 useHead({ title: 'Squads & plans' })
 const route = useRoute()
 const side = useSideDrawer()
+const auth = useAuthStore()
 const tab = ref('squads')
 
 const { data: squads, refresh: r1 } = useAsyncData('squads', () => useApi<Squad[]>('/squads'))

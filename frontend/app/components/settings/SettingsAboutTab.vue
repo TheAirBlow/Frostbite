@@ -9,7 +9,7 @@
       <dt class="text-base-content/50">{{ $t('Daemons connect to') }}</dt><dd class="font-mono text-xs break-all">{{ origin }}/api/link</dd>
       <dt class="text-base-content/50">{{ $t('Cores') }}</dt><dd><span v-for="c in cores" :key="c.kind" class="badge badge-sm badge-primary badge-soft mr-1">{{ c.display_name }}</span></dd>
     </dl>
-    <p class="text-base-content/60 text-sm">{{ $t('Set FROSTBITE_SERVER_PUBLIC_URL when the panel sits behind a proxy, so share links and install commands carry the right address.') }}</p>
+    <p class="text-base-content/60 text-sm">{{ $t('Set FROSTBITE_SERVER_PUBLIC_URL when the panel is behind a proxy.') }}</p>
   </div>
 </template>
 

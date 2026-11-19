@@ -15,13 +15,13 @@
       <div class="flex flex-wrap items-center gap-3">
         <input type="color" class="size-10 cursor-pointer rounded-lg border-0 bg-transparent" :value="theme.primary || '#7cc8f7'" @input="theme.setPrimary(($event.target as HTMLInputElement).value)">
         <div class="flex gap-1.5"><button v-for="c in swatches" :key="c" class="size-7 rounded-full border border-white/20" :style="{ background: c }" :aria-label="c" @click="theme.setPrimary(c)" /></div>
-        <button v-if="theme.primary" class="btn btn-ghost btn-sm" @click="theme.setPrimary('')">{{ $t('Reset') }}</button>
+        <button v-if="theme.primary" class="btn btn-sm" @click="theme.setPrimary('')">{{ $t('Reset') }}</button>
       </div>
     </Section>
 
     <Section :title="$t('Interface')">
       <FormField label="Language"><LanguageSwitcher align="dropdown-start" /></FormField>
-      <ToggleRow v-model="prefs.advanced" label="Advanced mode" hint="Opens every Advanced section by default: raw patches, listen addresses, sort orders, fragment settings and more. Off keeps them folded, but they are always one click away." />
+      <ToggleRow v-model="prefs.advanced" label="Advanced mode" hint="Expand Advanced sections by default." />
       <FormField label="Users per page"><select v-model.number="prefs.usersPageSize" class="select w-32"><option v-for="n in [25, 50, 100, 200]" :key="n" :value="n">{{ n }}</option></select></FormField>
     </Section>
 

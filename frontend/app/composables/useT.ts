@@ -39,7 +39,8 @@ export function useT() {
       msg = current.value.messages[`${key}_${form}`] ?? current.value.messages[`${key}_other`]
     }
     msg ??= current.value.messages[key] ?? en[key as keyof typeof en] ?? key
-    return msg.replace(/\{(\w+)\}/g, (_, k: string) => String(params[k] ?? ''))
+    // a {name} the caller gave no value for stays as written, so messages may quote placeholders
+    return msg.replace(/\{(\w+)\}/g, (m, k: string) => (k in params ? String(params[k]) : m))
   }
 
   function setLocale(code: string) {

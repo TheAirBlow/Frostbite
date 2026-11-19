@@ -13,7 +13,7 @@
       <div class="flex flex-col gap-4 xl:col-span-3">
         <Section :title="$t('Rules')" hint="The first rule that matches wins. Everything else follows the daemon's default outbound.">
           <template #actions>
-            <button class="btn btn-sm btn-primary" @click="side.open('rule')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add rule') }}</button>
+            <button class="btn btn-sm btn-soft btn-primary" @click="side.open('rule')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add rule') }}</button>
           </template>
           <Skeleton v-if="!rules" :rows="3" :height="60" />
           <div v-else-if="visibleRules.length" class="flex flex-col gap-2">
@@ -33,7 +33,7 @@
               <input type="checkbox" class="toggle toggle-sm toggle-primary" :checked="r.enabled" :aria-label="`Enable ${r.name}`" @change="toggle(r)">
             </div>
           </div>
-          <EmptyState v-else icon="fa6-solid:route" :title="$t('No rules')" text="Without rules everything goes out through the default outbound. Add one to block ads, send a country direct or push streaming through another exit." />
+          <EmptyState v-else icon="fa6-solid:route" :title="$t('No rules')" text="Everything uses the default outbound until you add a rule." />
         </Section>
 
         <Section :title="$t('Quick switches')" hint="Applied to every daemon, before your own rules.">
@@ -51,7 +51,7 @@
 
       <Section :title="$t('Outbounds')" hint="Exits a daemon can use. direct and block always exist." class="xl:col-span-2 self-start">
         <template #actions>
-          <button class="btn btn-sm" :disabled="!allDaemons.length" @click="side.open('outbound', null, scope ? { daemon: scope } : {})"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button>
+          <button class="btn btn-sm btn-soft btn-primary" :disabled="!allDaemons.length" @click="side.open('outbound', null, scope ? { daemon: scope } : {})"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button>
         </template>
         <div class="flex flex-col gap-2">
           <div class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3"><Icon name="fa6-solid:globe" size="14" class="text-base-content/50" /><div class="flex-1"><p class="font-medium">{{ $t('direct') }}</p><p class="text-base-content/50 text-xs">{{ $t('Straight to the internet from the node.') }}</p></div><span class="badge badge-sm badge-ghost">{{ $t('built in') }}</span></div>

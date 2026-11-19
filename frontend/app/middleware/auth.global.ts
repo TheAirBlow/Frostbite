@@ -6,5 +6,5 @@ export default defineNuxtRouteMiddleware((to) => {
     return
   }
   if (!auth.authed) return navigateTo('/login')
-  if (auth.isReseller && !['/users'].includes(to.path)) return navigateTo('/users')
+  if (!auth.canVisit(to.path)) return navigateTo(auth.home)
 })

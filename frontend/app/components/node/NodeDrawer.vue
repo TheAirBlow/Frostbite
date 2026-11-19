@@ -14,10 +14,10 @@
     </FormField>
     <FormField label="Tags" name="tags"><ChipInput v-model="form.tags" :placeholder="$t('premium, eu, ...')" /></FormField>
     <FormField label="Traffic limit" name="traffic_limit" hint="Informational, shown as a bar on the node card."><ByteInput v-model="form.traffic_limit" /></FormField>
-    <FormField label="Traffic multiplier" name="traffic_multiplier" hint="Usage on this node is multiplied before it counts against users. 2 means everything costs double, 0 makes it free.">
+    <FormField label="Traffic multiplier" name="traffic_multiplier" hint="2 doubles usage, 0 makes it free.">
       <div class="flex items-center gap-2">
         <input v-model.number="form.traffic_multiplier" type="number" min="0" step="0.1" class="input w-28">
-        <button v-for="m in [0, 0.5, 1, 2]" :key="m" type="button" class="btn btn-xs rounded-full" :class="form.traffic_multiplier === m ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="form.traffic_multiplier = m">×{{ m }}</button>
+        <button v-for="m in [0, 0.5, 1, 2]" :key="m" type="button" class="btn btn-xs rounded-full" :class="form.traffic_multiplier === m ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="form.traffic_multiplier = m">×{{ m }}</button>
       </div>
     </FormField>
     <FormField label="Note" name="note"><textarea v-model="form.note" class="textarea w-full" rows="2" /></FormField>

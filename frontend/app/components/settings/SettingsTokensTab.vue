@@ -1,6 +1,6 @@
 <template>
   <div class="flex max-w-2xl flex-col gap-4">
-    <p class="text-base-content/60 text-sm">{{ $t('Tokens let scripts and bots use the API with your permissions. Send one as the header Authorization: Bearer fbt_…') }}</p>
+    <p class="text-base-content/60 text-sm">{{ $t('Send as Authorization: Bearer fbt_…') }}</p>
     <form class="flex flex-col gap-2" novalidate @submit.prevent="create()">
       <div class="flex items-start gap-2">
         <FormField class="flex-1" label="Name" name="name" required>

@@ -3,11 +3,16 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+
+	"frostbite/internal/compose"
 	"frostbite/internal/core"
 	"frostbite/internal/db"
 	"frostbite/internal/spec"
@@ -15,14 +20,14 @@ import (
 
 // registerInbounds registers inbound and host endpoints.
 func (s *Server) registerInbounds(mux authMux) {
-	mux.Admin("GET /inbounds", s.listInbounds)
-	mux.Admin("POST /inbounds", s.createInbound)
-	mux.Admin("PUT /inbounds/{id}", s.updateInbound)
-	mux.Admin("DELETE /inbounds/{id}", s.deleteInbound)
-	mux.Admin("POST /hosts", s.createHost)
-	mux.Admin("PUT /hosts/{id}", s.updateHost)
-	mux.Admin("DELETE /hosts/{id}", s.deleteHost)
-	mux.Admin("GET /presets", s.listPresets)
+	mux.Node("GET /inbounds", nil, s.listInbounds)
+	mux.Node("POST /inbounds", newInbound, s.createInbound)
+	mux.Node("PUT /inbounds/{id}", inboundAtPath, s.updateInbound)
+	mux.Node("DELETE /inbounds/{id}", inboundAtPath, s.deleteInbound)
+	mux.Node("POST /hosts", newHost, s.createHost)
+	mux.Node("PUT /hosts/{id}", hostAtPath, s.updateHost)
+	mux.Node("DELETE /hosts/{id}", hostAtPath, s.deleteHost)
+	mux.Node("GET /presets", nil, s.listPresets)
 	mux.Auth("GET /schema", s.schema)
 }
 
@@ -44,13 +49,20 @@ func (s *Server) listInbounds(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	mine, err := s.daemonFilter(r.Context())
+	if err != nil {
+		internalError(w, err)
+		return
+	}
 	byInbound := map[int64][]db.Host{}
 	for _, h := range hosts {
 		byInbound[h.InboundID] = append(byInbound[h.InboundID], h)
 	}
-	out := make([]inboundResponse, len(inbounds))
-	for i, in := range inbounds {
-		out[i] = inboundResponse{Inbound: in, Hosts: orEmpty(byInbound[in.ID])}
+	out := make([]inboundResponse, 0, len(inbounds))
+	for _, in := range inbounds {
+		if mine(in.DaemonID) {
+			out = append(out, inboundResponse{Inbound: in, Hosts: orEmpty(byInbound[in.ID])})
+		}
 	}
 	ok(w, out)
 }
@@ -91,6 +103,48 @@ func (req *inboundRequest) normalize() {
 	if req.Protocol == spec.ProtoTurnable {
 		req.Options = req.Options.MigrateTurnable()
 	}
+}
+
+// resolveTurnable points the destinations that lead to one of the panel's inbounds at that inbound, and refuses the
+// ones the tunnel could not reach.
+func (s *Server) resolveTurnable(ctx context.Context, req *inboundRequest) (verr, err error) {
+	if req.Protocol != spec.ProtoTurnable || len(req.Options.TRoutes) == 0 {
+		return nil, nil
+	}
+	d, derr := s.Queries.GetDaemon(ctx, req.DaemonID)
+	if derr != nil {
+		return nil, nil // check reports a daemon that is not there
+	}
+	routes := slices.Clone(req.Options.TRoutes)
+	for i, r := range routes {
+		if r.Kind != spec.RouteInbound || r.InboundID <= 0 {
+			continue
+		}
+		at := fmt.Sprintf("options.t_routes.%d.inbound_id", i)
+		target, gerr := s.Queries.GetInbound(ctx, r.InboundID)
+		if errors.Is(gerr, pgx.ErrNoRows) {
+			return spec.Invalid(at, "that inbound does not exist"), nil
+		}
+		if gerr != nil {
+			return nil, gerr
+		}
+		switch {
+		case target.Protocol == spec.ProtoForward || target.Protocol == spec.ProtoTurnable || target.Protocol == spec.ProtoShadowTLS:
+			return spec.Invalid(at, "a tunnel can't lead to a %s inbound", target.Protocol), nil
+		case target.EdgeDaemonID != nil:
+			return spec.Invalid(at, "that inbound sits behind an edge daemon and expects its PROXY header, pick one with its own port"), nil
+		}
+		td, gerr := s.Queries.GetDaemon(ctx, target.DaemonID)
+		if gerr != nil {
+			return nil, gerr
+		}
+		if td.NodeID != d.NodeID {
+			return spec.Invalid(at, "that inbound runs on another server, and the tunnel only reaches this one"), nil
+		}
+		routes[i].Target = compose.LoopbackTarget(target)
+	}
+	req.Options.TRoutes = routes
+	return nil, nil
 }
 
 // check validates an inbound against its daemon's core and the other inbounds on that daemon.
@@ -153,11 +207,18 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 
 	if req.Preset != "" {
 		if err := s.applyPreset(r.Context(), &req); err != nil {
-			badRequest(w, err.Error())
+			badInput(w, err)
 			return
 		}
 	}
 	req.normalize()
+	if verr, err := s.resolveTurnable(r.Context(), &req); err != nil {
+		internalError(w, err)
+		return
+	} else if verr != nil {
+		badInput(w, verr)
+		return
+	}
 	if verr, err := s.check(r.Context(), req, 0); err != nil {
 		internalError(w, err)
 		return
@@ -228,6 +289,13 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 	req.DaemonID = cur.DaemonID
 
 	req.normalize()
+	if verr, err := s.resolveTurnable(r.Context(), &req); err != nil {
+		internalError(w, err)
+		return
+	} else if verr != nil {
+		badInput(w, verr)
+		return
+	}
 	if verr, err := s.check(r.Context(), req, id); err != nil {
 		internalError(w, err)
 		return

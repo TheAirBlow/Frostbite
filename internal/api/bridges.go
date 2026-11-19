@@ -13,7 +13,7 @@ import (
 
 // registerBridges registers the bridge wizard and the topology view.
 func (s *Server) registerBridges(mux authMux) {
-	mux.Admin("POST /bridges", s.createBridge)
+	mux.Node("POST /bridges", newBridge, s.createBridge)
 	mux.Admin("GET /topology", s.topology)
 }
 

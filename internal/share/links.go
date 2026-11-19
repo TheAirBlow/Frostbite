@@ -14,6 +14,9 @@ import (
 
 // Link renders an upstream as a share link most clients can import.
 func Link(u spec.Upstream) (string, error) {
+	if u.RawLink != "" {
+		return u.RawLink, nil
+	}
 	name := url.PathEscape(u.Name)
 	hostport := fmt.Sprintf("%s:%d", bracket(u.Address), u.Port)
 

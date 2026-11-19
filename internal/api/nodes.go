@@ -20,17 +20,17 @@ import (
 
 // registerNodes registers node and daemon management endpoints.
 func (s *Server) registerNodes(mux authMux) {
-	mux.Admin("GET /nodes", s.listNodes)
+	mux.Node("GET /nodes", nil, s.listNodes)
 	mux.Admin("POST /nodes", s.createNode)
-	mux.Admin("PUT /nodes/{id}", s.updateNode)
+	mux.Node("PUT /nodes/{id}", nodeAtPath, s.updateNode)
 	mux.Admin("DELETE /nodes/{id}", s.deleteNode)
-	mux.Admin("POST /nodes/{id}/daemons", s.createDaemon)
-	mux.Admin("PUT /daemons/{id}", s.updateDaemon)
-	mux.Admin("DELETE /daemons/{id}", s.deleteDaemon)
-	mux.Admin("POST /daemons/{id}/rotate", s.rotateDaemon)
-	mux.Admin("POST /daemons/{id}/restart", s.restartDaemon)
-	mux.Admin("GET /daemons/{id}/preview", s.previewDaemon)
-	mux.Admin("GET /daemons/{id}/logs", s.daemonLogs)
+	mux.Node("POST /nodes/{id}/daemons", nodeAtPath, s.createDaemon)
+	mux.Node("PUT /daemons/{id}", daemonAtPath, s.updateDaemon)
+	mux.Node("DELETE /daemons/{id}", daemonAtPath, s.deleteDaemon)
+	mux.Node("POST /daemons/{id}/rotate", daemonAtPath, s.rotateDaemon)
+	mux.Node("POST /daemons/{id}/restart", daemonAtPath, s.restartDaemon)
+	mux.Node("GET /daemons/{id}/preview", daemonAtPath, s.previewDaemon)
+	mux.Node("GET /daemons/{id}/logs", daemonAtPath, s.daemonLogs)
 	mux.Auth("GET /cores", s.listCores)
 }
 
@@ -87,11 +87,15 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := make([]nodeResponse, len(nodes))
+	sc := scopeFrom(r.Context())
+	out := make([]nodeResponse, 0, len(nodes))
 	idx := map[int64]int{}
-	for i, n := range nodes {
-		out[i] = nodeResponse{Node: n, Daemons: []daemonResponse{}}
-		idx[n.ID] = i
+	for _, n := range nodes {
+		if sc != nil && !sc.nodes[n.ID] {
+			continue
+		}
+		idx[n.ID] = len(out)
+		out = append(out, nodeResponse{Node: n, Daemons: []daemonResponse{}})
 	}
 	for _, d := range daemons {
 		if i, found := idx[d.NodeID]; found {

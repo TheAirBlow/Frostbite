@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -63,6 +64,10 @@ type Agent struct {
 	lastErr string
 
 	certs  *certs
+	caddy  *caddyCerts
+	guards *guards
+	last   *link.Spec // the spec as the panel sent it, for applying again
+	waits  []string   // inbounds serving a stand-in until their own certificate files appear
 	sendMu sync.Mutex
 	send   func(typ string, body any) error // the live session's writer, nil while offline
 }
@@ -71,17 +76,25 @@ type Agent struct {
 func New(cfg Config, rt Runtime) *Agent {
 	a := &Agent{cfg: cfg, rt: rt}
 	a.certs = newCerts(filepath.Join(cfg.DataDir, "acme"), cfg.ACMEDirectory, cfg.ACMEHTTPPort, rt.Restart)
-	a.certs.report = a.reportCerts
+	a.certs.report = func([]link.CertStatus) { a.reportCerts() }
+	a.caddy = newCaddyCerts(filepath.Join(cfg.DataDir, "caddy-certs"), rt.Restart)
+	a.caddy.report = a.reportCerts
+	a.guards = newGuards(rt)
 	return a
 }
 
-// reportCerts tells the panel how automatic certificates are doing, if a session is open.
-func (a *Agent) reportCerts(list []link.CertStatus) {
+// certStatuses lists every certificate the agent looks after.
+func (a *Agent) certStatuses() []link.CertStatus {
+	return append(a.certs.Statuses(), a.caddy.Statuses()...)
+}
+
+// reportCerts tells the panel how certificates are doing, if a session is open.
+func (a *Agent) reportCerts() {
 	a.sendMu.Lock()
 	send := a.send
 	a.sendMu.Unlock()
 	if send != nil {
-		_ = send(link.TypeCerts, list)
+		_ = send(link.TypeCerts, a.certStatuses())
 	}
 }
 
@@ -90,11 +103,16 @@ func (a *Agent) localize(d *spec.Daemon) {
 	if filepath.Clean(a.cfg.DataDir) == "/data" {
 		return
 	}
-	dir := filepath.Join(a.cfg.DataDir, "acme")
+	acme, caddy := filepath.Join(a.cfg.DataDir, "acme"), filepath.Join(a.cfg.DataDir, "caddy-certs")
 	for i := range d.Inbounds {
 		s := &d.Inbounds[i].Security
-		if s.ACME != nil && s.Type == spec.SecurityTLS {
-			s.CertPath, s.KeyPath = s.ACME.Paths(dir)
+		if s.Type != spec.SecurityTLS {
+			continue
+		}
+		if s.ACME != nil {
+			s.CertPath, s.KeyPath = s.ACME.Paths(acme)
+		} else if s.Caddy != nil {
+			s.CertPath, s.KeyPath = s.Caddy.Paths(caddy)
 		}
 	}
 }
@@ -106,6 +124,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	a.resume(ctx)
 	go a.certs.Run(ctx)
+	go a.caddy.Run(ctx)
+	go a.guards.Run(ctx)
+	go a.watchStandins(ctx)
 
 	backoff := time.Second
 	for ctx.Err() == nil {
@@ -214,7 +235,7 @@ func (a *Agent) session(ctx context.Context) error {
 		a.send = nil
 		a.sendMu.Unlock()
 	}()
-	if st := a.certs.Statuses(); len(st) > 0 {
+	if st := a.certStatuses(); len(st) > 0 {
 		_ = send(link.TypeCerts, st)
 	}
 
@@ -269,19 +290,26 @@ func (a *Agent) apply(ctx context.Context, sp link.Spec, save bool) error {
 		return fmt.Errorf("spec is for a %s daemon, this one runs %s", sp.Daemon.Kind, a.rt.Kind())
 	}
 
-	a.localize(&sp.Daemon)
-	a.certs.Want(sp.Daemon)
-	ensureCerts(sp.Daemon)
-	rendered, err := desc.Render(sp.Daemon)
+	d := sp.Daemon
+	d.Inbounds = slices.Clone(d.Inbounds)
+	a.localize(&d)
+	a.certs.Want(d)
+	a.caddy.Want(d)
+	waits := ensureCerts(&d, filepath.Join(a.cfg.DataDir, "standin"))
+	rendered, err := desc.Render(d)
 	if err != nil {
 		return a.fail(fmt.Errorf("render: %w", err))
 	}
-	if err := a.rt.Apply(ctx, sp.Daemon, rendered); err != nil {
+	a.guards.Pause()
+	err = a.rt.Apply(ctx, d, rendered)
+	a.guards.Want(d)
+	if err != nil {
 		return a.fail(err)
 	}
 
 	a.mu.Lock()
 	a.applied, a.lastErr = sp.Revision, ""
+	a.last, a.waits = &sp, waits
 	a.mu.Unlock()
 	if save {
 		if raw, err := json.Marshal(sp); err == nil {
@@ -291,6 +319,39 @@ func (a *Agent) apply(ctx context.Context, sp link.Spec, save bool) error {
 		}
 	}
 	return nil
+}
+
+// watchStandins applies the spec again once the certificate files of an inbound serving a stand-in appear.
+func (a *Agent) watchStandins(ctx context.Context) {
+	tick := time.NewTicker(time.Minute)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		a.mu.Lock()
+		last, waits := a.last, a.waits
+		a.mu.Unlock()
+		if last == nil || len(waits) == 0 || !certsAppeared(last.Daemon, waits) {
+			continue
+		}
+		slog.Info("certificate files appeared, applying the spec again")
+		if err := a.apply(ctx, *last, false); err != nil {
+			slog.Warn("applying with the new certificate failed", "err", err)
+		}
+	}
+}
+
+// certsAppeared reports whether any of the named inbounds now has its own certificate files.
+func certsAppeared(d spec.Daemon, tags []string) bool {
+	for _, in := range d.Inbounds {
+		if slices.Contains(tags, in.Tag) && fileExists(in.Security.CertPath) && fileExists(in.Security.KeyPath) {
+			return true
+		}
+	}
+	return false
 }
 
 // fail remembers the last error.
@@ -363,7 +424,8 @@ func (a *Agent) command(ctx context.Context, c link.Cmd) link.Result {
 		fmt.Sscanf(c.Args["lines"], "%d", &n)
 		res.Output = a.rt.Logs(max(1, min(n, 5000)))
 	case link.CmdTestReality, link.CmdTestHost:
-		out, err := testTLS(ctx, c.Args["dest"])
+		xver, _ := strconv.Atoi(c.Args["xver"])
+		out, err := testTLS(ctx, c.Args["dest"], c.Args["sni"], xver)
 		res.Output = out
 		if err != nil {
 			res.OK, res.Error = false, err.Error()

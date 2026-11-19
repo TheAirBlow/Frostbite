@@ -722,24 +722,29 @@ WHERE ($1::text IS NULL OR status = $1)
   AND ($3::bigint IS NULL OR owner_id = $3)
   AND ($4::text IS NULL OR $4 = ANY(tags))
   AND ($5::bigint IS NULL OR EXISTS (SELECT 1 FROM user_squads us WHERE us.user_id = users.id AND us.squad_id = $5))
+  AND ($6::bigint IS NULL OR owner_id = $6 OR EXISTS (
+       SELECT 1 FROM user_squads us JOIN squad_inbounds si ON si.squad_id = us.squad_id JOIN inbounds i ON i.id = si.inbound_id
+       JOIN daemons d ON d.id = i.daemon_id JOIN admin_nodes an ON an.node_id = d.node_id
+       WHERE us.user_id = users.id AND an.admin_id = $6))
 ORDER BY
-  CASE WHEN $6::text = 'used' THEN traffic_used END DESC NULLS LAST,
-  CASE WHEN $6::text = 'expire' THEN expire_at END ASC NULLS LAST,
-  CASE WHEN $6::text = 'online' THEN online_at END DESC NULLS LAST,
-  CASE WHEN $6::text = 'name' THEN username END ASC,
+  CASE WHEN $7::text = 'used' THEN traffic_used END DESC NULLS LAST,
+  CASE WHEN $7::text = 'expire' THEN expire_at END ASC NULLS LAST,
+  CASE WHEN $7::text = 'online' THEN online_at END DESC NULLS LAST,
+  CASE WHEN $7::text = 'name' THEN username END ASC,
   id DESC
-LIMIT $8::int OFFSET $7::int
+LIMIT $9::int OFFSET $8::int
 `
 
 type ListUsersParams struct {
-	Status  *string `db:"status" json:"status"`
-	Search  *string `db:"search" json:"search"`
-	Owner   *int64  `db:"owner" json:"owner"`
-	Tag     *string `db:"tag" json:"tag"`
-	Squad   *int64  `db:"squad" json:"squad"`
-	Sort    string  `db:"sort" json:"sort"`
-	Skip    int32   `db:"skip" json:"skip"`
-	MaxRows int32   `db:"max_rows" json:"max_rows"`
+	Status    *string `db:"status" json:"status"`
+	Search    *string `db:"search" json:"search"`
+	Owner     *int64  `db:"owner" json:"owner"`
+	Tag       *string `db:"tag" json:"tag"`
+	Squad     *int64  `db:"squad" json:"squad"`
+	NodeAdmin *int64  `db:"node_admin" json:"node_admin"`
+	Sort      string  `db:"sort" json:"sort"`
+	Skip      int32   `db:"skip" json:"skip"`
+	MaxRows   int32   `db:"max_rows" json:"max_rows"`
 }
 
 type ListUsersRow struct {
@@ -779,6 +784,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 		arg.Owner,
 		arg.Tag,
 		arg.Squad,
+		arg.NodeAdmin,
 		arg.Sort,
 		arg.Skip,
 		arg.MaxRows,

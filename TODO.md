@@ -9,4 +9,3 @@ Done: panel, Xray / sing-box / edge daemons, nodes, inbounds, hosts, squads and 
 - PROXY protocol for sing-box inbounds behind an edge (upstream removed it)
 - SSH client profiles (there is no SSH server in the panel)
 - WireGuard for Xray: its WireGuard inbound reports no per-user traffic, so quotas would not work
-- Publishing the Docker images (the workflow in .github/workflows/images.yml is untested, nothing could run Docker here)

@@ -66,3 +66,28 @@ INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SE
 
 -- name: ListSettings :many
 SELECT * FROM settings;
+
+-- name: ListAdminNodes :many
+SELECT * FROM admin_nodes ORDER BY admin_id, node_id;
+
+-- name: ListAdminNodeIDs :many
+SELECT node_id FROM admin_nodes WHERE admin_id = $1 ORDER BY node_id;
+
+-- name: ClearAdminNodes :exec
+DELETE FROM admin_nodes WHERE admin_id = $1;
+
+-- name: AddAdminNodes :exec
+INSERT INTO admin_nodes (admin_id, node_id) SELECT sqlc.arg(admin_id)::bigint, unnest(sqlc.arg(node_ids)::bigint[])
+ON CONFLICT DO NOTHING;
+
+-- name: ListSquadNodes :many
+SELECT DISTINCT si.squad_id, d.node_id FROM squad_inbounds si
+JOIN inbounds i ON i.id = si.inbound_id JOIN daemons d ON d.id = i.daemon_id;
+
+-- name: ListUserNodes :many
+SELECT DISTINCT us.user_id, d.node_id FROM user_squads us
+JOIN squad_inbounds si ON si.squad_id = us.squad_id JOIN inbounds i ON i.id = si.inbound_id JOIN daemons d ON d.id = i.daemon_id
+WHERE us.user_id = ANY(sqlc.arg(ids)::bigint[]);
+
+-- name: RemoveUserSquads :exec
+DELETE FROM user_squads WHERE user_id = sqlc.arg(user_id) AND squad_id = ANY(sqlc.arg(squad_ids)::bigint[]);

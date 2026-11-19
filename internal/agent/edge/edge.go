@@ -290,15 +290,22 @@ func (r *Runtime) Stats(context.Context) (link.Stats, error) { return link.Stats
 func (r *Runtime) Restart(context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for addr, ln := range r.listeners {
+	var failed []string
+	old := r.listeners
+	r.listeners = map[string]net.Listener{}
+	for addr, ln := range old {
 		_ = ln.Close()
-		delete(r.listeners, addr)
 		nl, err := net.Listen("tcp", addr)
 		if err != nil {
-			return err
+			// the next apply tries this address again
+			failed = append(failed, fmt.Sprintf("%s: %v", addr, err))
+			continue
 		}
 		r.listeners[addr] = nl
 		go r.accept(nl)
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("could not listen on %s", strings.Join(failed, "; "))
 	}
 	return nil
 }

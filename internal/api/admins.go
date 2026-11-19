@@ -20,18 +20,41 @@ func (s *Server) registerAdmins(mux authMux) {
 
 // adminRequest is the JSON body for creating or editing an admin.
 type adminRequest struct {
-	Username     string `json:"username"`
-	Password     string `json:"password"`
-	Role         string `json:"role"`
-	Enabled      *bool  `json:"enabled"`
-	UserQuota    *int32 `json:"user_quota"`
-	TrafficQuota *int64 `json:"traffic_quota"`
-	Note         string `json:"note"`
+	Username     string  `json:"username"`
+	Password     string  `json:"password"`
+	Role         string  `json:"role"`
+	Enabled      *bool   `json:"enabled"`
+	UserQuota    *int32  `json:"user_quota"`
+	TrafficQuota *int64  `json:"traffic_quota"`
+	NodeIDs      []int64 `json:"node_ids"`
+	Note         string  `json:"note"`
 }
 
-// validRole reports whether role is one of the three known roles.
+// validRole reports whether role is one of the known roles.
 func validRole(role string) bool {
-	return role == RoleOwner || role == RoleAdmin || role == RoleReseller
+	return role == RoleOwner || role == RoleAdmin || role == RoleReseller || role == RoleNodeAdmin
+}
+
+// roleMessage explains which roles exist.
+const roleMessage = "role must be owner, admin, reseller or node_admin"
+
+// checkNodes requires a node admin to manage at least one node.
+func (req adminRequest) checkNodes() error {
+	if req.Role == RoleNodeAdmin && len(req.NodeIDs) == 0 {
+		return spec.Invalid("node_ids", "pick at least one node for a node admin")
+	}
+	return nil
+}
+
+// saveNodes stores the nodes a node admin manages, and clears them for every other role.
+func (s *Server) saveNodes(r *http.Request, a db.Admin, ids []int64) error {
+	if err := s.Queries.ClearAdminNodes(r.Context(), a.ID); err != nil {
+		return err
+	}
+	if a.Role != RoleNodeAdmin || len(ids) == 0 {
+		return nil
+	}
+	return s.Queries.AddAdminNodes(r.Context(), db.AddAdminNodesParams{AdminID: a.ID, NodeIds: ids})
 }
 
 // listAdmins lists every panel account.
@@ -41,9 +64,19 @@ func (s *Server) listAdmins(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	links, err := s.Queries.ListAdminNodes(r.Context())
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	nodes := map[int64][]int64{}
+	for _, l := range links {
+		nodes[l.AdminID] = append(nodes[l.AdminID], l.NodeID)
+	}
 	out := make([]adminResponse, len(rows))
 	for i, a := range rows {
 		out[i] = newAdminResponse(a)
+		out[i].NodeIDs = orEmpty(nodes[a.ID])
 	}
 	ok(w, out)
 }
@@ -83,7 +116,11 @@ func (s *Server) createAdmin(w http.ResponseWriter, r *http.Request) {
 		req.Role = RoleAdmin
 	}
 	if !validRole(req.Role) {
-		invalid(w, "role", "role must be owner, admin or reseller")
+		invalid(w, "role", roleMessage)
+		return
+	}
+	if err := req.checkNodes(); err != nil {
+		badInput(w, err)
 		return
 	}
 
@@ -99,8 +136,17 @@ func (s *Server) createAdmin(w http.ResponseWriter, r *http.Request) {
 		dbError(w, err)
 		return
 	}
-	s.audit(r, "admin.create", a.Username, map[string]any{"role": a.Role})
-	created(w, newAdminResponse(a))
+	if err := s.saveNodes(r, a, req.NodeIDs); err != nil {
+		dbError(w, err)
+		return
+	}
+	s.audit(r, "admin.create", a.Username, map[string]any{"role": a.Role, "node_ids": req.NodeIDs})
+	out, err := s.withNodes(r.Context(), a)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	created(w, out)
 }
 
 // updateAdmin edits an account's role, limits and state.
@@ -117,10 +163,14 @@ func (s *Server) updateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validRole(req.Role) {
-		invalid(w, "role", "role must be owner, admin or reseller")
+		invalid(w, "role", roleMessage)
 		return
 	}
 	if err := req.checkQuotas(); err != nil {
+		badInput(w, err)
+		return
+	}
+	if err := req.checkNodes(); err != nil {
 		badInput(w, err)
 		return
 	}
@@ -137,8 +187,17 @@ func (s *Server) updateAdmin(w http.ResponseWriter, r *http.Request) {
 		dbError(w, err)
 		return
 	}
-	s.audit(r, "admin.update", a.Username, map[string]any{"role": a.Role, "enabled": a.Enabled})
-	ok(w, newAdminResponse(a))
+	if err := s.saveNodes(r, a, req.NodeIDs); err != nil {
+		dbError(w, err)
+		return
+	}
+	s.audit(r, "admin.update", a.Username, map[string]any{"role": a.Role, "enabled": a.Enabled, "node_ids": req.NodeIDs})
+	out, err := s.withNodes(r.Context(), a)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	ok(w, out)
 }
 
 // resetAdminPassword sets a new password for another account.

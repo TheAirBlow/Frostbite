@@ -59,7 +59,7 @@
     <template v-else-if="mode === 'warp'">
       <WarpAccount />
       <Advanced :title="$t('Use a network interface instead')">
-        <FormField label="Network interface" name="interface" hint="If the node already runs its own WARP interface, name it here and the panel account is ignored.">
+        <FormField label="Network interface" name="interface" hint="Use the node's own WARP interface instead of the panel account.">
           <input v-model="form.interface" class="input w-full font-mono" :placeholder="$t('warp')">
         </FormField>
       </Advanced>

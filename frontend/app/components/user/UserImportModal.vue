@@ -5,7 +5,7 @@
 
       <template v-if="source === 'db'">
         <p class="text-base-content/60 text-sm">
-          {{ $t('Upload the database file of 3x-ui (x-ui.db), Marzban (db.sqlite3) or Hiddify (hiddifypanel.db). It is only read, and the panel is recognised on its own. UUIDs, passwords, limits, usage, expiry and "starts at first use" carry over. Work on a copy if the old panel is still running.') }}
+          {{ $t('A 3x-ui, Marzban or Hiddify database file. It is only read.') }}
         </p>
         <FormField label="Database file" name="file" required>
           <input type="file" accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/octet-stream" class="file-input file-input-sm w-full" @change="dbFile = ($event.target as HTMLInputElement).files?.[0] ?? null; report = null">
@@ -26,7 +26,7 @@
       <Skeleton v-if="!squads" :rows="1" />
       <FormField v-else label="Add them to squads" name="squad_ids">
         <div class="flex flex-wrap gap-1.5">
-          <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="squadIds.includes(s.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="squadIds = squadIds.includes(s.id) ? squadIds.filter(x => x !== s.id) : [...squadIds, s.id]">{{ s.name }}</button>
+          <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="squadIds.includes(s.id) ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="squadIds = squadIds.includes(s.id) ? squadIds.filter(x => x !== s.id) : [...squadIds, s.id]">{{ s.name }}</button>
         </div>
       </FormField>
 

@@ -3,7 +3,7 @@
     <div class="flex items-start gap-3">
       <span class="text-3xl leading-none">{{ flag(node.country) }}</span>
       <div class="min-w-0 flex-1">
-        <h3 class="font-display truncate text-xl font-semibold">{{ node.name }}</h3>
+        <h2 class="font-display truncate text-xl font-semibold">{{ node.name }}</h2>
         <p class="text-base-content/60 flex items-center gap-1 font-mono text-xs">{{ node.address }} <CopyButton :value="node.address" /></p>
         <div class="mt-1.5 flex flex-wrap gap-1.5">
           <span v-if="!node.enabled" class="badge badge-sm badge-neutral">{{ $t('disabled') }}</span>
@@ -62,7 +62,7 @@
       <p v-if="!node.daemons.length" class="text-base-content/50 px-1 py-2 text-sm">{{ $t('Nothing runs here yet. Add a daemon to start serving traffic.') }}</p>
     </div>
 
-    <button class="btn btn-sm btn-outline mt-3" @click="emit('add-daemon')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add daemon') }}</button>
+    <button class="btn btn-sm btn-soft btn-primary mt-3" @click="emit('add-daemon')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add daemon') }}</button>
 
     <AppModal v-if="enrollment" :title="$t('New token')" :subtitle="enrollment.daemon.name" max-width="max-w-xl" @close="enrollment = null">
       <EnrollPanel :enrollment="enrollment.data" :kind="enrollment.daemon.kind" />

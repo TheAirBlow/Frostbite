@@ -23,6 +23,8 @@ services:
     volumes:
       - ./data/xray:/data
       - ./certs:/certs
+      # For "Use Caddy's certificate": Caddy's data folder, the one holding certificates/ (/data/caddy in Caddy's image).
+      # - /var/lib/caddy/.local/share/caddy:/caddy:ro
 
   singbox:
     <<: *agent
@@ -34,6 +36,7 @@ services:
     volumes:
       - ./data/singbox:/data
       - ./certs:/certs
+      # - /var/lib/caddy/.local/share/caddy:/caddy:ro
 
   # Shares port 443 between the other daemons on this host by looking at the TLS server name.
   edge:

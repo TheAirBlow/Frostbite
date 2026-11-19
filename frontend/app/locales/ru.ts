@@ -36,6 +36,7 @@ export default {
   'dash.daemons': 'Демоны',
   'dash.allConnected': 'все подключены',
   'dash.someOffline': 'часть не в сети',
+  'dash.allOffline': 'все не в сети',
   'dash.byStatus': 'Пользователи по статусу',
   'dash.nodes': 'Серверы',
   'dash.manage': 'Управление',

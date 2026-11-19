@@ -9,7 +9,7 @@
     <ToggleRow v-model="form.start_on_first_use" label="Start the clock on first use" hint="New users stay on hold until they connect for the first time." />
     <FormField label="Squads" name="squad_ids">
       <div class="flex flex-wrap gap-1.5">
-        <button v-for="s in squads ?? []" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="form.squad_ids.includes(s.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="form.squad_ids = form.squad_ids.includes(s.id) ? form.squad_ids.filter(x => x !== s.id) : [...form.squad_ids, s.id]">{{ s.name }}</button>
+        <button v-for="s in squads ?? []" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="form.squad_ids.includes(s.id) ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="form.squad_ids = form.squad_ids.includes(s.id) ? form.squad_ids.filter(x => x !== s.id) : [...form.squad_ids, s.id]">{{ s.name }}</button>
       </div>
     </FormField>
     <Advanced>

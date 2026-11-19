@@ -1,7 +1,10 @@
 // Package spec is the core-agnostic description of what a daemon should run.
 package spec
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Protocols an inbound or upstream can speak.
 const (
@@ -145,6 +148,7 @@ type Security struct {
 	ECHConfig   string   `json:"ech_config,omitempty" ui:"label=ECH config,show=type:tls,advanced"`
 	Reality     *Reality `json:"reality,omitempty"`
 	ACME        *ACME    `json:"acme,omitempty"`
+	Caddy       *Caddy   `json:"caddy,omitempty"`
 }
 
 // ACMEDir is where daemons keep certificates they obtained. An agent with another data directory maps it.
@@ -159,6 +163,31 @@ type ACME struct {
 // Paths returns where the certificate and key live under dir.
 func (a ACME) Paths(dir string) (cert, key string) {
 	return dir + "/" + a.Domain + "/fullchain.pem", dir + "/" + a.Domain + "/privkey.pem"
+}
+
+// CaddyDir is where daemons look for Caddy's data folder when the inbound does not say.
+const CaddyDir = "/caddy"
+
+// Caddy reuses the certificate a Caddy server on the same node keeps for a domain.
+type Caddy struct {
+	Domain string `json:"domain"`
+	Dir    string `json:"dir,omitempty"` // Caddy's data folder as the daemon sees it, the one holding certificates/
+}
+
+// CaddyCopyDir is where daemons keep their own copy of Caddy's certificates, so the core reads a stable path.
+const CaddyCopyDir = "/data/caddy-certs"
+
+// StorageName is the folder name Caddy gives a domain, which turns a leading *. into wildcard_.
+func (c Caddy) StorageName() string {
+	if rest, ok := strings.CutPrefix(c.Domain, "*."); ok {
+		return "wildcard_." + rest
+	}
+	return c.Domain
+}
+
+// Paths returns where the daemon's copy of the certificate and key live under dir.
+func (c Caddy) Paths(dir string) (cert, key string) {
+	return dir + "/" + c.StorageName() + "/fullchain.pem", dir + "/" + c.StorageName() + "/privkey.pem"
 }
 
 // Reality holds REALITY handshake settings.
@@ -213,6 +242,30 @@ type Options struct {
 	Mux         *Mux                `json:"mux,omitempty"`
 	Fragment    *Frag               `json:"fragment,omitempty"`
 	AcceptProxy bool                `json:"accept_proxy,omitempty"` // expect a PROXY protocol header, set when an edge sits in front
+	Guard       *Guard              `json:"guard,omitempty"`
+}
+
+// Guard defaults.
+const (
+	GuardInterval = 30
+	GuardTimeout  = 5
+	GuardFailures = 3
+	GuardGiveUp   = 3
+)
+
+// Guard watches an inbound that cloaks as a real site. While the core is down the daemon serves the port itself and
+// passes every connection to the site, and a core that stops answering is restarted.
+type Guard struct {
+	Enabled  bool   `json:"enabled"`
+	Target   string `json:"target,omitempty"`   // host:port of the real site, taken from the inbound when empty
+	SNI      string `json:"sni,omitempty"`      // server name the probes send, taken from the inbound when empty
+	XVer     *int   `json:"xver,omitempty"`     // PROXY header version sent to the target, taken from the inbound when nil
+	Interval int    `json:"interval,omitempty"` // seconds between probes
+	Timeout  int    `json:"timeout,omitempty"`  // seconds one probe may take
+	Failures int    `json:"failures,omitempty"` // failed probes in a row before the core is restarted
+	Takeover *bool  `json:"takeover,omitempty"` // serve the port while the core is down, on when nil
+	Restart  *bool  `json:"restart,omitempty"`  // restart a core that stops answering, on when nil
+	GiveUp   int    `json:"give_up,omitempty"`  // failed recoveries in a row before the core is stopped and the site served directly
 }
 
 // Mux is client side multiplexing, advertised to clients through subscriptions.
@@ -271,7 +324,8 @@ type Upstream struct {
 	Transport Transport `json:"transport"`
 	Security  Security  `json:"security"`
 	Options   Options   `json:"options"`
-	Inner     *Upstream `json:"inner,omitempty"` // what runs inside this one, e.g. shadowsocks under shadowtls
+	Inner     *Upstream `json:"inner,omitempty"`    // what runs inside this one, e.g. shadowsocks under shadowtls
+	RawLink   string    `json:"raw_link,omitempty"` // a link written by hand, served exactly as it is
 }
 
 // Rule routes matching traffic to an outbound.

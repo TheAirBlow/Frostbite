@@ -47,7 +47,7 @@ func (s *Server) loadTopology(ctx context.Context) (*compose.Topology, error) {
 }
 
 // profilesOf lists the connections a user may use right now.
-func (s *Server) profilesOf(ctx context.Context, u db.User) ([]compose.Profile, error) {
+func (s *Server) profilesOf(ctx context.Context, u db.User, mode compose.ProfileMode) ([]compose.Profile, error) {
 	t, err := s.loadTopology(ctx)
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func (s *Server) profilesOf(ctx context.Context, u db.User) ([]compose.Profile, 
 	if err != nil {
 		return nil, err
 	}
-	return t.Profiles(u, squads), nil
+	return t.Profiles(u, squads, mode), nil
 }
 
 // registerSub registers subscription management endpoints.
@@ -100,6 +100,13 @@ func (s *Server) buildSub(ctx context.Context, u db.User, ua, format string, dev
 		return subDoc{}, err
 	}
 
+	// Turnable apps only understand their own links, everything else gets the profiles that work without one
+	// A format only the ordinary profiles can be drawn in, asked for by name, gets them whatever the app is.
+	mode := compose.ModeStandard
+	if set.isTurnableClient(ua) && (format == "" || format == "auto" || format == share.FormatRaw || format == share.FormatLinks) {
+		mode = compose.ModeTurnable
+	}
+
 	var patch json.RawMessage
 	if format == "" || format == "auto" {
 		f, p, err := s.formatFor(ctx, ua, set)
@@ -107,11 +114,21 @@ func (s *Server) buildSub(ctx context.Context, u db.User, ua, format string, dev
 			return subDoc{}, err
 		}
 		format, patch = f, p
+		if mode == compose.ModeTurnable && format != share.FormatRaw && format != share.FormatLinks {
+			format, patch = share.FormatLinks, nil
+		}
 	}
 
-	profiles, notice, err := s.subProfiles(ctx, u, set, dev)
+	profiles, notice, err := s.subProfiles(ctx, u, set, dev, mode)
 	if err != nil {
 		return subDoc{}, err
+	}
+	if len(profiles) == 0 && mode == compose.ModeTurnable {
+		// nothing is tunnelled for this user, so serve what a regular app would get
+		profiles, notice, err = s.subProfiles(ctx, u, set, dev, compose.ModeStandard)
+		if err != nil {
+			return subDoc{}, err
+		}
 	}
 	if len(profiles) == 0 {
 		return subDoc{}, fmt.Errorf("nothing to serve: this user has no active connections")
@@ -194,7 +211,7 @@ func deviceOf(r *http.Request) deviceInfo {
 }
 
 // subProfiles returns the connections to serve, or a single notice profile when the user can't connect.
-func (s *Server) subProfiles(ctx context.Context, u db.User, set SubSettings, dev deviceInfo) ([]compose.Profile, string, error) {
+func (s *Server) subProfiles(ctx context.Context, u db.User, set SubSettings, dev deviceInfo, mode compose.ProfileMode) ([]compose.Profile, string, error) {
 	reason := ""
 	switch u.Status {
 	case "disabled":
@@ -214,7 +231,7 @@ func (s *Server) subProfiles(ctx context.Context, u db.User, set SubSettings, de
 		return []compose.Profile{noticeProfile(reason)}, reason, nil
 	}
 
-	profiles, err := s.profilesOf(ctx, u)
+	profiles, err := s.profilesOf(ctx, u, mode)
 	if err != nil {
 		return nil, "", err
 	}
@@ -592,7 +609,7 @@ func (s *Server) portal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profiles, err := s.profilesOf(r.Context(), u)
+	profiles, err := s.profilesOf(r.Context(), u, compose.ModeAll)
 	if err != nil {
 		internalError(w, err)
 		return

@@ -17,7 +17,7 @@
           </FormField>
           <FormField label="Port" name="port" :hint="udp ? 'This one uses UDP.' : ''" required><input v-model.number="form.port" type="number" min="1" max="65535" class="input w-full"></FormField>
         </div>
-        <FormField v-if="edgeChoices.length && form.protocol !== 'forward'" label="Shared port" name="edge_daemon_id" hint="Behind an edge daemon this inbound shares its port with others and is picked by the TLS server name. Needs tls or reality, over TCP.">
+        <FormField v-if="edgeChoices.length && form.protocol !== 'forward'" label="Shared port" name="edge_daemon_id" hint="Shares the edge port by TLS server name. Needs TLS or REALITY over TCP.">
           <select v-model="form.edge_daemon_id" class="select w-full">
             <option :value="null">{{ $t('Its own port, listening directly') }}</option>
             <option v-for="e in edgeChoices" :key="e.id" :value="e.id">Behind {{ e.name }} ({{ e.edge_listen.join(', ') }})</option>
@@ -26,7 +26,7 @@
         <FormField v-if="form.edge_daemon_id" label="Server names" name="edge_sni" hint="Empty uses the REALITY server names or the TLS domain. Wildcards like *.example.com work.">
           <ChipInput v-model="form.edge_sni" :placeholder="$t('vpn.example.com')" :check="checkServerName" />
         </FormField>
-        <p v-if="form.edge_daemon_id && daemon?.kind === 'singbox'" class="text-warning -mt-1 text-xs">{{ $t('sing-box does not read the PROXY header, so users of this inbound will all appear to connect from 127.0.0.1. IP limits and the connected-from list will not be accurate for it.') }}</p>
+        <p v-if="form.edge_daemon_id && daemon?.kind === 'singbox'" class="text-warning -mt-1 text-xs">{{ $t('sing-box ignores the PROXY header, so IP limits will not work here.') }}</p>
         <ToggleRow v-model="form.enabled" label="Enabled" hint="A disabled inbound stops listening and leaves subscriptions." />
         <Advanced>
           <div class="grid gap-3 sm:grid-cols-2">
@@ -54,7 +54,19 @@
           <SchemaForm v-if="!['mtproto', 'turnable'].includes(form.protocol)" v-model="securityModel" :fields="securityFields" prefix="security." :context="{ protocol: form.protocol }" />
 
           <section v-if="form.security.type === 'tls'" class="surface flex flex-col gap-3 p-4">
-            <ToggleRow :model-value="!!form.security.acme" label="Get the certificate automatically" hint="The daemon requests and renews a free Let's Encrypt certificate for the domain. The domain must point at this node and port 80 must be free there." @update:model-value="setAcme" />
+            <ToggleRow :model-value="!!form.security.acme" label="Get the certificate automatically" hint="The domain must point here and port 80 must be free." @update:model-value="setAcme" />
+            <ToggleRow :model-value="!!form.security.caddy" label="Use Caddy's certificate" hint="Use the certificate Caddy keeps for the domain." @update:model-value="setCaddy" />
+            <template v-if="form.security.caddy">
+              <FormField label="Domain" name="security.caddy.domain" hint="As written in the Caddyfile. A wildcard certificate for the parent domain works too." required><input v-model="caddy!.domain" class="input w-full font-mono" :placeholder="$t('vpn.example.com')" autocomplete="off"></FormField>
+              <Advanced>
+                <FormField label="Caddy data folder" name="security.caddy.dir" hint="Caddy's data folder. Empty uses /caddy."><input v-model="caddy!.dir" class="input w-full font-mono" placeholder="/caddy" autocomplete="off"></FormField>
+              </Advanced>
+              <p v-for="c in caddyStates" :key="c.domain" class="flex items-center gap-2 text-sm" :class="c.ok ? 'text-success' : 'text-warning'">
+                <Icon :name="c.ok ? 'fa6-solid:circle-check' : 'fa6-solid:hourglass-half'" size="13" />
+                <template v-if="c.ok">Certificate valid until {{ formatDate(c.expires) }}.</template>
+                <template v-else>{{ c.placeholder ? 'Serving a self signed stand-in. ' : '' }}{{ c.error || 'Waiting for the daemon.' }}</template>
+              </p>
+            </template>
             <template v-if="form.security.acme">
               <div class="grid gap-3 sm:grid-cols-2">
                 <FormField label="Domain" name="security.acme.domain" required><input v-model="acme!.domain" class="input w-full font-mono" :placeholder="$t('vpn.example.com')" autocomplete="off"></FormField>
@@ -87,7 +99,7 @@
               <FormField label="Private key" name="security.reality.private_key" required><input v-model="reality.private_key" class="input w-full font-mono text-xs" type="password" autocomplete="off"></FormField>
             </div>
             <ConfirmButton type="button" class="btn btn-sm self-start" confirm-label="Clients must update their link" @confirmed="newKeys"><Icon name="fa6-solid:key" size="12" /> {{ $t('Generate new key pair') }}</ConfirmButton>
-            <FormField label="PROXY header to the target" name="security.reality.xver" hint="Lets the target see the real client address. The target has to expect it. For nginx that means proxy_protocol on its listener.">
+            <FormField label="PROXY header to the target" name="security.reality.xver" hint="The target must accept the PROXY header.">
               <select class="select w-full" :value="reality.xver ?? 0" @change="reality.xver = Number(($event.target as HTMLSelectElement).value)">
                 <option :value="0">{{ $t('Off') }}</option>
                 <option :value="1">{{ $t('Version 1') }}</option>
@@ -97,12 +109,40 @@
             </FormField>
             <FormField label="Spider X" name="security.reality.spider_x" hint="The path REALITY crawls on the target. Rarely needs changing."><input v-model="reality.spider_x" class="input w-full font-mono" placeholder="/"></FormField>
           </section>
+
+          <section v-if="guardable" class="surface flex flex-col gap-3 p-4">
+            <ToggleRow :model-value="!!guard?.enabled" label="Guard the real site" hint="Only for a site you run behind this inbound." @update:model-value="setGuard({ enabled: $event })" />
+            <template v-if="guard?.enabled">
+              <FormField label="Real site" name="options.guard.target" :hint="guardTargetHint" :required="!guardDefaultTarget">
+                <input class="input w-full font-mono" :value="guard.target ?? ''" :placeholder="guardDefaultTarget || '127.0.0.1:8443'" autocomplete="off" @input="setGuard({ target: ($event.target as HTMLInputElement).value })">
+              </FormField>
+              <Advanced>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <FormField label="Server name for checks" name="options.guard.sni" hint="Empty uses the inbound's own."><input class="input w-full font-mono" :value="guard.sni ?? ''" autocomplete="off" @input="setGuard({ sni: ($event.target as HTMLInputElement).value })"></FormField>
+                  <FormField label="PROXY header to the site" name="options.guard.xver" hint="Sent while the daemon serves the port itself.">
+                    <select class="select w-full" :value="guard.xver ?? ''" @change="setGuard({ xver: ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value) })">
+                      <option value="">{{ $t('Same as the inbound') }}</option>
+                      <option :value="0">{{ $t('Off') }}</option>
+                      <option :value="1">{{ $t('Version 1') }}</option>
+                      <option :value="2">{{ $t('Version 2') }}</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Check every (seconds)" name="options.guard.interval"><input type="number" min="1" max="3600" class="input w-full" :value="guard.interval || ''" placeholder="30" @input="setGuard({ interval: Number(($event.target as HTMLInputElement).value) || 0 })"></FormField>
+                  <FormField label="Check timeout (seconds)" name="options.guard.timeout"><input type="number" min="1" max="60" class="input w-full" :value="guard.timeout || ''" placeholder="5" @input="setGuard({ timeout: Number(($event.target as HTMLInputElement).value) || 0 })"></FormField>
+                  <FormField label="Failed checks before a restart" name="options.guard.failures"><input type="number" min="1" max="100" class="input w-full" :value="guard.failures || ''" placeholder="3" @input="setGuard({ failures: Number(($event.target as HTMLInputElement).value) || 0 })"></FormField>
+                  <FormField label="Failed recoveries before giving up" name="options.guard.give_up" hint="Failures in a row before the core is stopped."><input type="number" min="1" max="100" class="input w-full" :value="guard.give_up || ''" placeholder="3" @input="setGuard({ give_up: Number(($event.target as HTMLInputElement).value) || 0 })"></FormField>
+                </div>
+                <ToggleRow :model-value="guard.restart ?? true" label="Restart a core that stops answering" @update:model-value="setGuard({ restart: $event })" />
+                <ToggleRow :model-value="guard.takeover ?? true" label="Serve the port while the core is down" hint="Also lets the guard stop a core that will not recover and leave the port with the site." @update:model-value="setGuard({ takeover: $event })" />
+              </Advanced>
+            </template>
+          </section>
         </template>
         <p v-else class="text-base-content/50 text-sm">{{ $t('A relay passes bytes through untouched, so there is nothing to configure here.') }}</p>
       </template>
 
       <template v-else-if="tab === 'protocol'">
-        <TurnableRoutes v-if="form.protocol === 'turnable'" v-model="turnableRoutes" />
+        <TurnableRoutes v-if="form.protocol === 'turnable'" v-model="turnableRoutes" :node-id="node?.id" />
         <SchemaForm v-model="optionsModel" :fields="optionFields" prefix="options." :context="{ protocol: form.protocol }" />
         <p v-if="!optionFields.length && form.protocol !== 'turnable'" class="text-base-content/50 text-sm">{{ $t('This protocol has no extra settings.') }}</p>
 
@@ -156,7 +196,7 @@
 </template>
 
 <script setup lang="ts">
-import type { CommandResult, CoreInfo, Daemon, Inbound, Mux, PanelNode, Reality, Schema, SchemaField, TurnableRoute } from '~/types/api'
+import type { CommandResult, CoreInfo, Daemon, Guard, Inbound, Mux, PanelNode, Reality, Schema, SchemaField, TurnableRoute } from '~/types/api'
 
 const props = defineProps<{ id: number | null }>()
 const emit = defineEmits<{ title: [m: { title: string, subtitle?: string, width?: string }], done: [] }>()
@@ -330,6 +370,7 @@ async function newServerKeys() {
     : { ...f.options, t_private: k.private, t_public: k.public }
 }
 
+const routePlaceholders = ['host', 'port', 'user', 'uuid', 'password', 'name', 'node', 'country', 'route']
 const checkServerName = (v: string) => (/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(v) ? undefined : 'Not a valid server name')
 const checkShortId = (v: string) => (/^([0-9a-f]{2}){0,8}$/i.test(v) ? undefined : 'Use up to 16 hex characters, an even number')
 
@@ -346,7 +387,39 @@ const acme = computed(() => (form.value?.security.acme ?? null) as { domain: str
 function setAcme(on: boolean) {
   const sec = form.value!.security
   sec.acme = on ? { domain: String(sec.sni ?? ''), email: '' } : null
+  if (on) sec.caddy = null
 }
+
+const caddy = computed(() => (form.value?.security.caddy ?? null) as { domain: string, dir?: string } | null)
+function setCaddy(on: boolean) {
+  const sec = form.value!.security
+  sec.caddy = on ? { domain: String(sec.sni ?? ''), dir: '' } : null
+  if (on) sec.acme = null
+}
+const caddyStates = computed(() => (daemon.value?.live.certs ?? []).filter(c => c.domain === caddy.value?.domain))
+
+const guard = computed(() => (form.value?.options.guard ?? null) as Guard | null)
+function setGuard(patch: Partial<Guard>) {
+  form.value!.options = { ...form.value!.options, guard: { enabled: false, ...guard.value, ...patch } }
+}
+// tcp inbounds that can stand in front of a real site
+const guardable = computed(() => {
+  const f = form.value
+  if (!f || f.protocol === 'forward' || udp.value) return false
+  return ['reality', 'tls'].includes(String(f.security.type)) || ['shadowtls', 'mtproto'].includes(f.protocol)
+})
+// where the guard sends traffic when no target is set, mirroring spec.CloakOf
+const guardDefaultTarget = computed(() => {
+  const f = form.value
+  if (!f) return ''
+  if (f.security.type === 'reality') return reality.value?.dest ?? ''
+  if (f.protocol === 'shadowtls') return String(f.options.handshake ?? '')
+  if (f.protocol === 'mtproto' && f.options.mt_domain) return `${f.options.mt_domain}:443`
+  return ''
+})
+const guardTargetHint = computed(() => guardDefaultTarget.value
+  ? 'Empty uses the handshake target. Set it when the site listens somewhere else.'
+  : 'host:port of the site this inbound fronts, for example Caddy on 127.0.0.1:8443.')
 const certStates = computed(() => {
   const domain = acme.value?.domain
   return (daemon.value?.live.certs ?? []).filter(c => c.domain === domain)
@@ -393,6 +466,11 @@ function rulesOf(f: Form): Record<string, string | undefined> {
       e['security.acme.domain'] = checkRequired(a.domain, 'Which domain is the certificate for?') ?? checkDomain(String(a.domain))
       if (a.email) e['security.acme.email'] = checkEmail(a.email)
     }
+    else if (sec.caddy) {
+      const c = sec.caddy as { domain?: string, dir?: string }
+      e['security.caddy.domain'] = checkRequired(c.domain, 'Which domain does Caddy keep a certificate for?') ?? checkServerName(String(c.domain))
+      if (c.dir && !String(c.dir).startsWith('/')) e['security.caddy.dir'] = 'Use an absolute path'
+    }
     else {
       e['security.cert_path'] = checkRequired(sec.cert_path, 'Where is the certificate file?')
       e['security.key_path'] = checkRequired(sec.key_path, 'Where is the key file?')
@@ -400,6 +478,14 @@ function rulesOf(f: Form): Record<string, string | undefined> {
   }
 
   const o = f.options
+  const g = o.guard as Guard | undefined
+  if (g?.enabled) {
+    e['options.guard.target'] = g.target ? checkHostPort(g.target) : (guardDefaultTarget.value ? undefined : 'Where does the real site listen?')
+    if (g.interval) e['options.guard.interval'] = checkInt(g.interval, 1, 3600)
+    if (g.timeout) e['options.guard.timeout'] = checkInt(g.timeout, 1, 60)
+    if (g.failures) e['options.guard.failures'] = checkInt(g.failures, 1, 100)
+    if (g.give_up) e['options.guard.give_up'] = checkInt(g.give_up, 1, 100)
+  }
   switch (f.protocol) {
     case 'turnable': {
       e['options.t_call_id'] = checkRequired(o.t_call_id, 'Paste the call id from the VK link')
@@ -412,8 +498,21 @@ function rulesOf(f: Form): Record<string, string | undefined> {
         const at = (k: string) => `options.t_routes.${i}.${k}`
         e[at('id')] = !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(r.id) ? 'Use lowercase letters, digits, - and _, up to 32 characters'
           : routes.findIndex(x => x.id === r.id) !== i ? 'Another destination already uses this id' : undefined
-        e[at('target')] = checkRequired(r.target, 'Where does it lead?') ?? checkHostPort(r.target, { ipOnly: true })
+        const kind = r.kind || 'external'
+        // a destination that leads to an inbound takes its address from it, the panel fills it in
+        if (kind !== 'inbound') e[at('target')] = checkRequired(r.target, 'Where does it lead?') ?? checkHostPort(r.target, { ipOnly: true })
         if (r.socket === 'tcp' && r.transport === 'none') e[at('transport')] = 'TCP needs a transport other than none'
+        if (kind === 'inbound' && !r.inbound_id) e[at('inbound_id')] = 'Pick the inbound this destination leads to'
+        if (kind === 'custom') {
+          const bad = [...(r.url ?? '').matchAll(/\{(\w*)\}/g)].map(m => m[1]!).find(v => !routePlaceholders.includes(v))
+          e[at('url')] = checkRequired(r.url, 'Write the link other apps should get')
+            ?? (r.url!.includes('://') ? undefined : 'A link starts with a scheme, like vless://')
+            ?? (bad === undefined ? undefined : `Unknown placeholder {${bad}}`)
+        }
+        if (kind !== 'external') {
+          e[at('local_port')] = checkPort(r.local_port)
+            ?? (routes.findIndex(x => (x.kind || 'external') !== 'external' && x.local_port === r.local_port) !== i ? 'Another destination already uses this port' : undefined)
+        }
       })
       break
     }
@@ -444,7 +543,13 @@ const formApi = useForm(form, rulesOf, { reveal: path => (tab.value = tabOf(path
 const testResult = ref<CommandResult | null>(null)
 const { loading: testing, run: testDest } = useAsyncAction(async () => {
   try {
-    testResult.value = await useApi<CommandResult>('/tools/test-reality', { method: 'POST', body: { daemon_id: form.value!.daemon_id, dest: reality.value?.dest } })
+    // a real client sends one of the server names, so the probe does too
+    const bad = checkRequired(reality.value?.dest, 'Enter a target first') ?? checkHostPort(String(reality.value?.dest))
+    if (bad) {
+      testResult.value = { id: 0, ok: false, error: bad }
+      return
+    }
+    testResult.value = await useApi<CommandResult>('/tools/test-reality', { method: 'POST', body: { daemon_id: form.value!.daemon_id, dest: reality.value?.dest, sni: reality.value?.server_names?.[0] ?? '', xver: reality.value?.xver ?? 0 } })
   }
   catch (e) {
     testResult.value = { id: 0, ok: false, error: errorMessage(e) }

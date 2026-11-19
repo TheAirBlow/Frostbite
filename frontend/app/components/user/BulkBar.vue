@@ -34,7 +34,7 @@
         <Segmented v-model="squadMode" :options="[{ value: 'add_squads', label: 'Add to' }, { value: 'set_squads', label: 'Replace with' }]" />
         <FormField label="Squads" name="squad_ids" :hint="squadMode === 'set_squads' ? 'Their current squads are replaced by these.' : 'These are added to their current squads.'">
           <div class="flex flex-wrap gap-1.5">
-            <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="squadIds.includes(s.id) ? 'btn-primary' : 'btn-ghost bg-base-200'" @click="squadIds = squadIds.includes(s.id) ? squadIds.filter(x => x !== s.id) : [...squadIds, s.id]">{{ s.name }}</button>
+            <button v-for="s in squads" :key="s.id" type="button" class="btn btn-sm rounded-full" :class="squadIds.includes(s.id) ? 'btn-soft btn-primary' : 'text-base-content/70'" @click="squadIds = squadIds.includes(s.id) ? squadIds.filter(x => x !== s.id) : [...squadIds, s.id]">{{ s.name }}</button>
           </div>
         </FormField>
       </template>

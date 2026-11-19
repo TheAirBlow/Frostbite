@@ -9,8 +9,8 @@
       <NodeCard v-for="n in nodes" :key="n.id" :node="n" @add-daemon="addFor = n" @logs="logsFor = $event" @preview="previewFor = $event" @changed="refresh" />
     </div>
     <div v-else class="surface">
-      <EmptyState icon="fa6-solid:server" :title="$t('No nodes yet')" text="Add the first server. You can have as many as you like, and each can run any mix of cores.">
-        <button class="btn btn-primary btn-sm" @click="side.open('node')">{{ $t('Add a node') }}</button>
+      <EmptyState icon="fa6-solid:server" :title="$t('No nodes yet')" text="Add your first server.">
+        <button class="btn btn-soft btn-primary btn-sm" @click="side.open('node')">{{ $t('Add a node') }}</button>
       </EmptyState>
     </div>
 

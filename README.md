@@ -1,5 +1,4 @@
 # Frostbite
-
 A VPN management panel built around the idea that servers and the panel should not care about each other.
 
 - **Panel** (Go + Postgres) holds users, nodes, inbounds, routing and subscriptions, and serves the web UI.
@@ -26,7 +25,6 @@ Open `http://localhost:8080` (the `web` service), then:
 To run a daemon on the panel's own machine, put its token in `.env` and use `docker compose --profile xray up -d`.
 
 ## Monitoring
-
 ```sh
 docker compose --profile monitoring up -d     # Prometheus, Grafana and node-exporter next to the panel
 ```
@@ -44,7 +42,6 @@ The panel serves `/metrics` on its own port (`FROSTBITE_METRICS_ADDR`, `127.0.0.
 The dashboard is generated: edit `docker/grafana/build_dashboard.py` and run it to rewrite `docker/grafana/dashboards/frostbite.json`.
 
 ## What it does
-
 - **Cores:** Xray and sing-box daemons, an **mtproto** daemon (Telegram proxy with a secret per user, fake TLS disguise), a **turnable** daemon that hides tunnels in a public VK call, plus an **edge** daemon that shares one public port between them by TLS server name and sends everything else to a decoy.
 - **Protocols:** VLESS (Reality, XHTTP, WS, gRPC, HTTPUpgrade), VMess, Trojan, Shadowsocks 2022, Hysteria2, TUIC, AnyTLS, Naive, SOCKS/HTTP and WireGuard.
 - **Bridges:** relays and chains, with a map of how your servers connect.
@@ -56,7 +53,6 @@ The dashboard is generated: edit `docker/grafana/build_dashboard.py` and run it 
 - **Backups:** download, restore and scheduled, in one json file.
 
 ## Layout
-
 ```
 cmd/panel, cmd/agent-xray, cmd/agent-singbox, cmd/agent-mtproto, cmd/agent-turnable
 internal/spec      the core-agnostic description of what a daemon runs
@@ -78,7 +74,6 @@ node/              the compose file new nodes download
 ```
 
 ## Adding a core
-
 1. `internal/core/<kind>`: a package that registers a `core.Descriptor` (capabilities and a `Render` function).
 2. `internal/agent/<kind>`: a `Runtime` that applies a rendered config and reports stats.
 3. `cmd/agent-<kind>/main.go`, a target in `Dockerfile.agent` and a profile in `node/docker-compose.yml`.
@@ -86,7 +81,6 @@ node/              the compose file new nodes download
 The forms in the UI come from the spec struct tags, so nothing changes in the frontend.
 
 ## Development
-
 ```sh
 sqlc generate                                   # after touching internal/db/queries or migrations
 go test ./...
@@ -99,32 +93,15 @@ A single binary with the UI embedded is still possible: `bun run generate` in `f
 
 Configuration is `FROSTBITE_*` environment variables (or `data/config.json`), see `internal/common/config.go`.
 
-## Turnable
-
-The Turnable over VK recipe makes one [Turnable](https://github.com/TheAirBlow/Turnable) server per inbound. It needs the code at the end of a public `vk.com/call/join/` link and a destination, which is the ip:port of whatever the tunnel leads to. A WireGuard inbound on the same node, `127.0.0.1:51820` over udp, is a good start. The panel generates the key pair.
-
-Every user gets a Turnable identity of their own and a `turnable://` link that Turnable's client imports. The tunnel only reaches the destination, so users still need a client for what sits behind it, WireGuard for example, pointed at the local port Turnable's client opens. Users are added and removed on the running server, and traffic is counted per user.
-
-Only relay mode on VK exists in Turnable so far. It tries to solve VK's captcha by itself. If that fails, the daemon log shows a link to a manual page on port 1984 of the node. It listens on localhost, so open it through an SSH tunnel.
-
-## Sharing a name with a real site
-
-REALITY can use your own site as its target. Move nginx's HTTPS listener off 443, say to `127.0.0.1:8443`, and keep port 80 where it is so certbot keeps working. Then make a VLESS REALITY inbound on 443 with `127.0.0.1:8443` as the handshake target and your site's name as the server name. Clients with a key get the VPN. Everyone else is passed through to nginx and sees the real site and its real certificate.
-
-Set the PROXY header option on the inbound to version 2 if nginx should see real visitor addresses. Nginx then needs `listen 127.0.0.1:8443 ssl proxy_protocol;`, `set_real_ip_from 127.0.0.1;` and `real_ip_header proxy_protocol;`. This works on Xray only. sing-box cannot send the header.
-
 ## Things to know
-
 - Behind an edge daemon only Xray inbounds learn the real client address (PROXY protocol). sing-box dropped support for it, so IP limits and "connected from" are not accurate for those.
 - WARP needs UDP to Cloudflare from the node. Some networks block it, in which case registration works but traffic does not flow.
 - Automatic certificates use the HTTP-01 challenge, so the domain must point at the node and port 80 must be free there.
 - I could not run Docker here, so the Dockerfiles and compose files were written but not built. Everything else was run for real, including the panel, the proxy (HTTP and the daemon websocket), Prometheus and Grafana as plain processes.
 - Daemons now reach the panel through the web service, so `FROSTBITE_PANEL_URL` must point at the web address.
-
 - Xray picks up user changes live. sing-box does too for every protocol the panel offers (it reaches into sing-box internals, pinned to one version, and falls back to a restart if anything looks different). A user being added to VMess can fail one handshake at the exact moment of the swap; the client retries. A user who loses access has their open connections on sing-box cut.
 - Xray 26 removed `allowInsecure`. Nodes with self signed certificates work for sing-box clients only, so use real certificates for Xray TLS inbounds.
 - Without a certificate at the configured path the daemon creates a self signed one so it can start.
 
 ## License
-
 GNU General Public License v2.0, see [LICENSE](LICENSE).

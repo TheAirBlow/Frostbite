@@ -34,7 +34,7 @@
         <div class="flex flex-col gap-2">
           <div v-for="a in recommended" :key="a.id" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3">
             <div class="min-w-0 flex-1"><p class="font-medium">{{ a.name }}</p><p class="text-base-content/50 text-xs capitalize">{{ a.platforms.join(', ') }}</p></div>
-            <a :href="a.download" target="_blank" rel="noopener" class="btn btn-sm btn-ghost">{{ t('portal.getApp') }}</a>
+            <a :href="a.download" target="_blank" rel="noopener" class="btn btn-sm">{{ t('portal.getApp') }}</a>
             <a v-if="a.import" :href="deepLink(a.import)" class="btn btn-sm btn-primary"><Icon name="fa6-solid:plus" size="11" /> {{ t('portal.add') }}</a>
           </div>
         </div>
@@ -42,8 +42,8 @@
         <div v-if="showAll" class="mt-2 flex flex-col gap-2">
           <div v-for="a in others" :key="a.id" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3">
             <div class="min-w-0 flex-1"><p class="font-medium">{{ a.name }}</p><p class="text-base-content/50 text-xs capitalize">{{ a.platforms.join(', ') }}</p></div>
-            <a :href="a.download" target="_blank" rel="noopener" class="btn btn-sm btn-ghost">{{ t('portal.getApp') }}</a>
-            <a v-if="a.import" :href="deepLink(a.import)" class="btn btn-sm">{{ t('portal.add') }}</a>
+            <a :href="a.download" target="_blank" rel="noopener" class="btn btn-sm">{{ t('portal.getApp') }}</a>
+            <a v-if="a.import" :href="deepLink(a.import)" class="btn btn-sm btn-soft btn-primary">{{ t('portal.add') }}</a>
           </div>
         </div>
       </section>
@@ -68,7 +68,7 @@
         <div v-if="showLinks" class="mt-3 flex flex-col gap-2">
           <div v-for="l in data.links" :key="l.link" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3">
             <span class="text-xl">{{ flag(l.country) }}</span>
-            <div class="min-w-0 flex-1"><p class="truncate font-medium">{{ l.name }}</p><p class="text-base-content/50 text-xs">{{ protocolLabels[l.protocol] ?? l.protocol }}</p></div>
+            <div class="min-w-0 flex-1"><p class="truncate font-medium">{{ l.name }}</p><p class="text-base-content/50 text-xs">{{ protocolLabels[l.protocol] ?? l.protocol }}<template v-if="l.via"> · {{ l.via === 'turnable' ? t('Turnable app') : t('through Turnable') }}</template></p></div>
             <button v-if="l.config" class="btn btn-ghost btn-xs btn-square" :title="$t('.conf')" @click="downloadText(`${l.name}.conf`, l.config)"><Icon name="fa6-solid:file-arrow-down" size="13" /></button>
             <CopyButton :value="l.link" />
           </div>

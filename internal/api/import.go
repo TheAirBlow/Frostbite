@@ -31,6 +31,9 @@ type importProblem struct {
 
 // importUsers reads a user list exported from somewhere else and creates the users.
 func (s *Server) importUsers(w http.ResponseWriter, r *http.Request) {
+	if nodeAdminsBarred(w, r) {
+		return
+	}
 	admin, _ := AdminFromContext(r.Context())
 	var req importRequest
 	if err := decode(r, &req); err != nil {
@@ -47,6 +50,9 @@ func (s *Server) importUsers(w http.ResponseWriter, r *http.Request) {
 
 // importDatabase reads users straight from another panel's sqlite database, sent as the request body.
 func (s *Server) importDatabase(w http.ResponseWriter, r *http.Request) {
+	if nodeAdminsBarred(w, r) {
+		return
+	}
 	admin, _ := AdminFromContext(r.Context())
 	f, err := os.CreateTemp("", "frostbite-import-*.db")
 	if err != nil {
