@@ -12,7 +12,7 @@ export function useDrawer() {
 
   function close() {
     const { panel: _p, tab: _t, ...rest } = route.query
-    router.replace({ query: rest })
+    return router.replace({ query: rest })
   }
 
   return { current, open, close }

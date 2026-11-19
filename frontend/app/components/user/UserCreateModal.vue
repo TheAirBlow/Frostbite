@@ -36,7 +36,8 @@ watch(squads, (s) => {
 const { loading: saving, run: submit } = useAsyncAction(async () => {
   const u = await useApi<PanelUser>('/users', { method: 'POST', body: createBody(form.value) })
   await refreshNuxtData('users')
-  modal.close()
+  // side.open builds on the current query, so the modal's panel must be gone from it first
+  await modal.close()
   side.open('user', u.id)
 }, 'User created.', formApi)
 </script>
