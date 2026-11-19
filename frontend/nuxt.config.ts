@@ -8,7 +8,6 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      titleTemplate: '%s · Frostbite',
       title: 'Frostbite',
       meta: [
         { name: 'description', content: 'Manage your VPN nodes, bridges and users.' },

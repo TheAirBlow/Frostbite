@@ -11,7 +11,11 @@
       <div v-if="quota.traffic_quota" class="min-w-40 flex-1"><p class="text-base-content/60 text-xs">{{ $t('Traffic handed out') }}</p><p class="text-sm font-medium">{{ formatBytes(quota.traffic_allocated) }} of {{ formatBytes(quota.traffic_quota) }}</p><progress class="progress progress-secondary h-1.5 w-full" :value="quota.traffic_allocated" :max="quota.traffic_quota" /></div>
     </div>
 
-    <div class="bg-base-100/90 sticky top-0 z-20 -mx-4 flex flex-col gap-3 px-4 pt-2 pb-3 backdrop-blur sm:-mx-6 sm:px-6">
+    <div ref="stickTop" aria-hidden="true" />
+    <div
+      class="sticky top-0 z-20 -mx-4 flex flex-col gap-3 border-b px-4 pt-2 pb-3 transition-colors sm:-mx-6 sm:px-6"
+      :class="stuck ? 'bg-base-100/90 border-base-300 backdrop-blur' : 'border-transparent'"
+    >
       <div class="flex flex-wrap items-center gap-2">
         <label class="input input-sm flex min-w-52 flex-1 items-center gap-2 sm:max-w-sm">
           <Icon name="fa6-solid:magnifying-glass" size="12" class="opacity-50" />
@@ -129,6 +133,11 @@ const offset = ref(0)
 const pageSize = computed(() => prefs.usersPageSize)
 const selected = ref(new Set<number>())
 const qr = ref<PanelUser | null>(null)
+
+// The filter bar gets its backdrop only once content scrolls under it.
+const stickTop = useTemplateRef<HTMLElement>('stickTop')
+const stuck = ref(false)
+useIntersectionObserver(stickTop, ([entry]) => { stuck.value = !entry?.isIntersecting })
 const links = ref<PanelUser | null>(null)
 
 watch(sort, v => (prefs.usersSort = v))
