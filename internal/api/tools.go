@@ -13,7 +13,7 @@ import (
 func (s *Server) registerTools(mux authMux) {
 	mux.Node("POST /tools/keys", nil, s.genKeys)
 	mux.Node("POST /tools/parse-link", nil, s.parseLink)
-	mux.Node("POST /tools/test-reality", nil, s.testReality)
+	mux.Node("POST /tools/test-reality", daemonInBody, s.testReality)
 }
 
 // genKeys generates a secret of the requested kind.

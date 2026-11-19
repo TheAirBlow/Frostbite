@@ -67,6 +67,9 @@ func New(dataDir string) *Runtime {
 // Kind is the core this runtime drives.
 func (r *Runtime) Kind() string { return "singbox" }
 
+// ServesReality marks sing-box as able to serve REALITY inbounds, see agent.RealityServer.
+func (r *Runtime) ServesReality() {}
+
 // CoreVersion is the embedded sing-box version.
 func (r *Runtime) CoreVersion() string { return "sing-box " + C.Version }
 

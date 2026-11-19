@@ -301,6 +301,12 @@ func daemonAtPath(s *Server, r *http.Request, _ scopeBody, sc *nodeScope) (bool,
 	return s.daemonIn(r.Context(), sc, id)
 }
 
+// daemonInBody allows a node admin the body's daemon_id when it is on their nodes.
+func daemonInBody(s *Server, r *http.Request, b scopeBody, sc *nodeScope) (bool, error) {
+	daemon, _ := scopeTests(s, r, sc)
+	return allIn(required(b.DaemonID, daemon))
+}
+
 // newInbound allows creating an inbound on, and behind an edge on, the admin's nodes.
 func newInbound(s *Server, r *http.Request, b scopeBody, sc *nodeScope) (bool, error) {
 	daemon, _ := scopeTests(s, r, sc)

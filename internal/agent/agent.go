@@ -54,6 +54,11 @@ type Runtime interface {
 	Close() error
 }
 
+// RealityServer is a runtime whose core serves REALITY inbounds, so it answers probes of REALITY targets.
+type RealityServer interface {
+	ServesReality()
+}
+
 // Agent keeps a runtime in sync with the panel.
 type Agent struct {
 	cfg Config
@@ -424,6 +429,10 @@ func (a *Agent) command(ctx context.Context, c link.Cmd) link.Result {
 		fmt.Sscanf(c.Args["lines"], "%d", &n)
 		res.Output = a.rt.Logs(max(1, min(n, 5000)))
 	case link.CmdTestReality, link.CmdTestHost:
+		if _, serves := a.rt.(RealityServer); c.Name == link.CmdTestReality && !serves {
+			res.OK, res.Error = false, a.rt.Kind()+" does not serve REALITY"
+			break
+		}
 		xver, _ := strconv.Atoi(c.Args["xver"])
 		out, err := testTLS(ctx, c.Args["dest"], c.Args["sni"], xver)
 		res.Output = out

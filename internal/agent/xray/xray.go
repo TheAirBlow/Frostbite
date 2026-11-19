@@ -73,6 +73,9 @@ func New(bin, dataDir string) *Runtime {
 // Kind is the core this runtime drives.
 func (r *Runtime) Kind() string { return "xray" }
 
+// ServesReality marks xray as able to serve REALITY inbounds, see agent.RealityServer.
+func (r *Runtime) ServesReality() {}
+
 // CoreVersion asks the binary which version it is.
 func (r *Runtime) CoreVersion() string {
 	out, err := exec.Command(r.bin, "version").Output()
