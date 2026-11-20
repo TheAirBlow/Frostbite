@@ -166,7 +166,8 @@ func outboundKind(d spec.Daemon, tag string) string {
 
 // site renders the handler every other visitor reaches.
 func site(o spec.Options) map[string]any {
-	set := map[string]any{}
+	// Caddy points Host at the upstream by itself, and the site has to see the name the visitor asked for
+	set := map[string]any{"Host": []string{"{http.request.hostport}"}}
 	del := []string{"Proxy-Authorization"}
 	if h := o.NaiveIPHeader(); h != "" {
 		set[h] = []string{"{http.request.remote.host}"}

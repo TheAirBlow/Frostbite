@@ -477,3 +477,91 @@ func TestH2UsersAndKick(t *testing.T) {
 		t.Errorf("usage %v", st.Users)
 	}
 }
+
+// proxyListener consumes the PROXY v2 header in front of each connection and reports the address it names.
+type proxyListener struct {
+	net.Listener
+	from chan string
+}
+
+func (l proxyListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	head := make([]byte, 16)
+	if _, err := io.ReadFull(c, head); err != nil || !bytes.HasPrefix(head, []byte{0x0D, 0x0A, 0x0D, 0x0A, 0x00, 0x0D, 0x0A, 0x51}) {
+		l.from <- "no header"
+		return c, nil
+	}
+	body := make([]byte, binary.BigEndian.Uint16(head[14:]))
+	io.ReadFull(c, body)
+	l.from <- net.IP(body[:4]).String()
+	return c, nil
+}
+
+// A site behind HTTPS gets the visitor's host as server name, and the visitor's address in a PROXY header when asked.
+func TestHTTPSSite(t *testing.T) {
+	for _, proxy := range []string{"", "v2"} {
+		t.Run("proxy="+proxy, func(t *testing.T) {
+			sni, from := make(chan string, 4), make(chan string, 4)
+			dir := t.TempDir()
+			cert, key := writeCert(t, dir)
+			pair, err := tls.LoadX509KeyPair(cert, key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var ln net.Listener = raw
+			if proxy != "" {
+				ln = proxyListener{raw, from}
+			}
+			srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, "secure site "+r.Host+" xff="+r.Header.Get("X-Forwarded-For"))
+			})}
+			go srv.Serve(tls.NewListener(ln, &tls.Config{
+				Certificates: []tls.Certificate{pair},
+				GetConfigForClient: func(h *tls.ClientHelloInfo) (*tls.Config, error) {
+					sni <- h.ServerName
+					return nil, nil
+				},
+			}))
+			defer srv.Close()
+
+			f := newFixture(t, func(in *spec.Inbound) {
+				in.Options.NaiveDest = raw.Addr().String()
+				in.Options.NaiveTLS = true
+				in.Options.NaiveSkip = true
+				in.Options.NaiveProxy = proxy
+				in.Options.AcceptProxy = true
+			})
+			conn, err := net.Dial("tcp", f.addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			conn.Write(proxyV2("203.0.113.7", "127.0.0.1"))
+			tc := tls.Client(conn, &tls.Config{InsecureSkipVerify: true, ServerName: "vpn.example.test", NextProtos: []string{"http/1.1"}})
+			fmt.Fprint(tc, "GET / HTTP/1.1\r\nHost: vpn.example.test\r\nConnection: close\r\n\r\n")
+			resp, err := http.ReadResponse(bufio.NewReader(tc), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != 200 || string(body) != "secure site vpn.example.test xff=203.0.113.7" {
+				t.Fatalf("got %d %q\n%s", resp.StatusCode, body, f.rt.Logs(20))
+			}
+			if got := <-sni; got != "vpn.example.test" {
+				t.Errorf("the site saw server name %q", got)
+			}
+			if proxy != "" {
+				if got := <-from; got != "203.0.113.7" {
+					t.Errorf("the site's PROXY header named %q", got)
+				}
+			}
+		})
+	}
+}

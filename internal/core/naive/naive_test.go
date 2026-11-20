@@ -60,7 +60,7 @@ func TestSiteHeaders(t *testing.T) {
 			site, _ := render(t, daemon(spec.Options{NaiveDest: "127.0.0.1:8443", NaiveHeader: c.header}))
 			req := site["headers"].(map[string]any)["request"].(map[string]any)
 			set, _ := req["set"].(map[string]any)
-			if c.set == "" && len(set) != 0 {
+			if c.set == "" && len(set) != 1 {
 				t.Errorf("set %v, want no header", set)
 			}
 			if c.set != "" && set[c.set] == nil {

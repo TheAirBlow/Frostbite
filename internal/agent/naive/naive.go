@@ -21,8 +21,8 @@ import (
 	_ "github.com/caddyserver/caddy/v2/modules/standard"
 	_ "github.com/caddyserver/forwardproxy"
 
-	"frostbite/internal/agent/naive/gate"
 	"frostbite/internal/agent/logs"
+	"frostbite/internal/agent/naive/gate"
 	"frostbite/internal/link"
 	"frostbite/internal/spec"
 )
@@ -32,7 +32,8 @@ type Runtime struct {
 	logs *logs.Ring
 
 	mu    sync.Mutex
-	cfg   []byte                       // the config Caddy runs, nil before the first apply
+	cfg   []byte                       // the config Caddy runs, nil until one has loaded
+	want  []byte                       // the config the panel asked for, kept so a failed load can be retried
 	users map[string][]gate.Credential // the users the gate knows, by inbound
 }
 
@@ -94,6 +95,7 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, rendered []byte) error
 	}
 	r.users = users
 
+	r.want = rendered
 	if bytes.Equal(rendered, r.cfg) {
 		return nil
 	}
@@ -123,21 +125,30 @@ func (r *Runtime) load(cfg []byte) error {
 func (r *Runtime) Reload(context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.cfg == nil {
+	if r.want == nil {
 		return errors.New("there is no config to run yet")
 	}
-	return r.load(r.cfg)
+	if err := r.load(r.want); err != nil {
+		return err
+	}
+	r.cfg = r.want
+	return nil
 }
 
 // Restart stops Caddy and starts it again, which drops every tunnel.
 func (r *Runtime) Restart(context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.cfg == nil {
+	if r.want == nil {
 		return errors.New("there is no config to run yet")
 	}
 	r.stop()
-	return r.load(r.cfg)
+	r.cfg = nil
+	if err := r.load(r.want); err != nil {
+		return err
+	}
+	r.cfg = r.want
+	return nil
 }
 
 // stop shuts Caddy down. It waits for open connections, so the tunnels are cut first.
@@ -163,6 +174,7 @@ func (r *Runtime) Close() error {
 		r.stop()
 		r.cfg = nil
 	}
+	r.want = nil
 	return nil
 }
 
