@@ -7,7 +7,7 @@ ARG VERSION=dev
 # the panel is the api only, the web interface is built from ./frontend
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X frostbite/internal/metrics.Version=${VERSION}" -o /out/panel ./cmd/panel
 
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /out/panel ./panel

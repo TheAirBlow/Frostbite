@@ -31,7 +31,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent .
 FROM build AS build-trojan
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-trojan
 
-FROM alpine:3.22 AS fetch-xray
+FROM alpine:3.24 AS fetch-xray
 ARG XRAY_VERSION=v26.3.27
 ARG TARGETARCH
 RUN apk add --no-cache curl unzip \
@@ -39,7 +39,7 @@ RUN apk add --no-cache curl unzip \
     && curl -fsSL "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${f}" -o /xray.zip \
     && unzip -q /xray.zip -d /xray
 
-FROM alpine:3.22 AS base
+FROM alpine:3.24 AS base
 RUN apk add --no-cache ca-certificates tzdata
 ENV FROSTBITE_DATA_DIR=/data
 VOLUME ["/data"]
