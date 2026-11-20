@@ -52,7 +52,7 @@ jobs:
           - { name: agent-edge, file: Dockerfile.agent, target: edge, context: . }
           - { name: agent-mtproto, file: Dockerfile.agent, target: mtproto, context: . }
           - { name: agent-turnable, file: Dockerfile.agent, target: turnable, context: . }
-          - { name: agent-caddy, file: Dockerfile.agent, target: caddy, context: . }
+          - { name: agent-naive, file: Dockerfile.agent, target: naive, context: . }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

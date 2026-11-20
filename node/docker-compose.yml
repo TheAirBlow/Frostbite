@@ -72,15 +72,15 @@ services:
       - ./data/turnable:/data
 
   # NaiveProxy that doubles as the front of a real website: everyone who is not a proxy user is sent on to it.
-  caddy:
+  naive:
     <<: *agent
-    profiles: [caddy]
-    image: ${FROSTBITE_IMAGE_CADDY:-ghcr.io/theairblow/frostbite-agent-caddy:latest}
+    profiles: [naive]
+    image: ${FROSTBITE_IMAGE_NAIVE:-ghcr.io/theairblow/frostbite-agent-naive:latest}
     environment:
       <<: *agent-env
-      FROSTBITE_TOKEN: ${FROSTBITE_CADDY_TOKEN:-}
+      FROSTBITE_TOKEN: ${FROSTBITE_NAIVE_TOKEN:-}
     volumes:
-      - ./data/caddy:/data
+      - ./data/naive:/data
       - ./certs:/certs
       # For "Use Caddy's certificate": Caddy's data folder, the one holding certificates/ (/data/caddy in Caddy's image).
       # - /var/lib/caddy/.local/share/caddy:/caddy:ro

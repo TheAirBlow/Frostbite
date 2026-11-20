@@ -36,7 +36,7 @@ func (d *Daemon) Validate() error {
 		if err := in.validateGuard(); err != nil {
 			return err
 		}
-		if in.Protocol == ProtoNaive && d.Kind == "caddy" {
+		if in.Protocol == ProtoNaive && d.Kind == "naive" {
 			if err := in.Options.validateNaive(); err != nil {
 				return err
 			}

@@ -183,20 +183,20 @@ services:
     volumes:
       - ./data/agent-turnable:/data
 
-  agent-caddy:
-    profiles: [caddy]
+  agent-naive:
+    profiles: [naive]
     build:
       context: .
       dockerfile: Dockerfile.agent
-      target: caddy
+      target: naive
     restart: unless-stopped
     network_mode: host
     cap_add: [NET_ADMIN]
     environment:
       FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
-      FROSTBITE_TOKEN: ${FROSTBITE_CADDY_TOKEN:-}
+      FROSTBITE_TOKEN: ${FROSTBITE_NAIVE_TOKEN:-}
     volumes:
-      - ./data/agent-caddy:/data
+      - ./data/agent-naive:/data
       - ./certs:/certs
 
   agent-edge:

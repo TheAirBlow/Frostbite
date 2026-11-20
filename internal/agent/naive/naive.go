@@ -1,7 +1,7 @@
-// Package caddy runs the Caddy daemon: Caddy with the NaiveProxy fork of forwardproxy, in this process. The gate keeps
+// Package naive runs the naive daemon: Caddy with the NaiveProxy fork of forwardproxy, in this process. The gate keeps
 // the users, counts their traffic and can cut them off, so changing users never reloads the config and never drops
 // anyone who stays.
-package caddy
+package naive
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ import (
 	_ "github.com/caddyserver/caddy/v2/modules/standard"
 	_ "github.com/caddyserver/forwardproxy"
 
-	"frostbite/internal/agent/caddy/gate"
+	"frostbite/internal/agent/naive/gate"
 	"frostbite/internal/agent/logs"
 	"frostbite/internal/link"
 	"frostbite/internal/spec"
@@ -44,14 +44,14 @@ func New() *Runtime {
 }
 
 // Kind is the core this runtime drives.
-func (r *Runtime) Kind() string { return "caddy" }
+func (r *Runtime) Kind() string { return "naive" }
 
 // CoreVersion identifies the Caddy build.
 func (r *Runtime) CoreVersion() string {
 	v, _ := caddycore.Version()
 	fields := strings.Fields(v)
 	if len(fields) == 0 {
-		return "caddy"
+		return "naive"
 	}
 	return "caddy " + strings.TrimPrefix(fields[0], "v")
 }

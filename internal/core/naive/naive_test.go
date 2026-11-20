@@ -1,4 +1,4 @@
-package caddy
+package naive
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 
 func daemon(o spec.Options) spec.Daemon {
 	return spec.Daemon{
-		Kind: "caddy",
+		Kind: "naive",
 		Inbounds: []spec.Inbound{{
 			Tag: "n1", Protocol: spec.ProtoNaive, Listen: "127.0.0.1", Port: 30001,
 			Security: spec.Security{Type: spec.SecurityTLS, CertPath: "/c/fullchain.pem", KeyPath: "/c/privkey.pem"},

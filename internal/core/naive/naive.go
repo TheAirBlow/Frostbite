@@ -1,6 +1,6 @@
-// Package caddy renders the config of the Caddy daemon: Caddy with the NaiveProxy fork of forwardproxy, where every
+// Package naive renders the config of the naive daemon: Caddy with the NaiveProxy fork of forwardproxy, where every
 // visitor that is no proxy user is sent on to a real site.
-package caddy
+package naive
 
 import (
 	"encoding/json"
@@ -16,8 +16,8 @@ import (
 
 func init() {
 	core.Register(core.Descriptor{
-		Kind:        "caddy",
-		DisplayName: "Caddy",
+		Kind:        "naive",
+		DisplayName: "Naive",
 		Caps: core.Capabilities{
 			Protocols:  []string{spec.ProtoNaive},
 			Transports: []string{spec.TransportTCP},
@@ -29,7 +29,7 @@ func init() {
 	})
 }
 
-// GateModule is the handler that checks proxy users, see internal/agent/caddy/gate.
+// GateModule is the handler that checks proxy users, see internal/agent/naive/gate.
 const GateModule = "frostbite_gate"
 
 // Render builds the Caddy config for d. Users are not part of it: they live in the running process, so adding and

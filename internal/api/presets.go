@@ -118,7 +118,7 @@ var presets = []preset{
 		},
 	},
 	{
-		ID: "naive-site", Label: "NaiveProxy with a real site", Group: "Other", Cores: []string{"caddy"},
+		ID: "naive-site", Label: "NaiveProxy with a real site", Group: "Other", Cores: []string{"naive"},
 		Description: "A NaiveProxy server that also acts as the front of a real website. Anyone who is not a proxy user, or fails to log in, is sent on to that site.",
 		Params: append(append([]presetParam{pPort("443")}, tlsParams...),
 			presetParam{Key: "site", Label: "Site address", Hint: "Where everyone else is sent, as host:port. Usually your web server.", Default: "127.0.0.1:8443", Kind: "string"},

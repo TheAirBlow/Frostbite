@@ -1,4 +1,4 @@
-package caddy
+package naive
 
 import (
 	"bufio"
@@ -30,7 +30,7 @@ import (
 
 	"golang.org/x/net/http2"
 
-	corecaddy "frostbite/internal/core/caddy"
+	corenaive "frostbite/internal/core/naive"
 	"frostbite/internal/spec"
 )
 
@@ -130,7 +130,7 @@ func newFixture(t *testing.T, tune func(*spec.Inbound)) *fixture {
 		tune(&in)
 	}
 	f.d = spec.Daemon{
-		Kind: "caddy", Inbounds: []spec.Inbound{in}, Outbounds: []spec.Outbound{{Tag: "direct", Kind: spec.OutDirect}}, Final: "direct",
+		Kind: "naive", Inbounds: []spec.Inbound{in}, Outbounds: []spec.Outbound{{Tag: "direct", Kind: spec.OutDirect}}, Final: "direct",
 		// the echo server is on loopback, which forwardproxy refuses unless a rule says otherwise
 		Rules: []spec.Rule{{IPCIDR: []string{"127.0.0.1/32"}, Outbound: "direct"}},
 	}
@@ -143,7 +143,7 @@ func (f *fixture) apply(t *testing.T) {
 	if err := f.d.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	rendered, err := corecaddy.Render(f.d)
+	rendered, err := corenaive.Render(f.d)
 	if err != nil {
 		t.Fatal(err)
 	}

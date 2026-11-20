@@ -7,12 +7,12 @@ import (
 	"syscall"
 
 	"frostbite/internal/agent"
-	agentcaddy "frostbite/internal/agent/caddy"
+	agentnaive "frostbite/internal/agent/naive"
 	"frostbite/internal/common"
-	_ "frostbite/internal/core/caddy"
+	_ "frostbite/internal/core/naive"
 )
 
-// main runs the Caddy daemon.
+// main runs the naive daemon.
 func main() {
 	cfg, err := agent.ConfigFromEnv()
 	if err != nil {
@@ -23,7 +23,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := agent.New(cfg, agentcaddy.New()).Run(ctx); err != nil {
+	if err := agent.New(cfg, agentnaive.New()).Run(ctx); err != nil {
 		common.Fatal("agent exited", "err", err)
 	}
 }
