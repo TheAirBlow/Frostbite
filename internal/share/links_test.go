@@ -125,3 +125,13 @@ func TestClientProfilesNeverCarryTheServerKey(t *testing.T) {
 		t.Fatalf("server secrets leaked or address missing: %+v", up.Options)
 	}
 }
+
+func TestNaiveLinkAsksForUDPOverTCP(t *testing.T) {
+	link, err := Link(spec.Upstream{Protocol: spec.ProtoNaive, Address: "a.example", Port: 443, Username: "u1", Password: "p@ss", Name: "n", Security: spec.Security{SNI: "pass.example"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "naive+https://u1:p%40ss@a.example:443?sni=pass.example&uot=1#n"; link != want {
+		t.Errorf("got %s, want %s", link, want)
+	}
+}

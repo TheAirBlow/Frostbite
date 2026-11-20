@@ -40,6 +40,7 @@ const blurb: Record<string, string> = {
   mtproto: 'A Telegram-only proxy. Each user gets their own secret, so usage and limits work per person. Pretends to be a visit to a real site.',
   turnable: 'Hides a tunnel in a public VK call and leads it to one destination on this node, like a WireGuard inbound. Users change live.',
   naive: 'NaiveProxy and a real website in one: everyone who is not a proxy user is sent on to your site. Users change live, and a removed user is cut off at once.',
+  trojan: 'A native trojan server and a real website in one, like upstream trojan: everyone who is not a trojan user is sent on to your site. Users change live, and a removed user is cut off at once.',
   edge: 'Shares port 443 between the other daemons on this node by reading the TLS server name. Optional decoy for everything else.',
 }
 

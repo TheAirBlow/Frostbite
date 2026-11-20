@@ -98,10 +98,7 @@ func server(d spec.Daemon, in spec.Inbound) (map[string]any, error) {
 		"automatic_https":         map[string]any{"disable": true},
 		"tls_connection_policies": []any{map[string]any{"certificate_selection": map[string]any{"any_tag": []string{in.Tag}}}},
 		"routes": []any{
-			map[string]any{"handle": []any{map[string]any{
-				"handler": GateModule, "inbound": in.Tag,
-				"proxy": proxy(d, in),
-			}}},
+			map[string]any{"handle": []any{gate(d, in)}},
 			map[string]any{"handle": []any{hideVia(), site(o)}},
 		},
 	}
@@ -112,6 +109,16 @@ func server(d spec.Daemon, in spec.Inbound) (map[string]any, error) {
 		}
 	}
 	return srv, nil
+}
+
+// gate renders the handler that lets proxy users in. UDP over TCP is answered by the gate itself, so it gets the same
+// access rules the proxy handler applies to connections.
+func gate(d spec.Daemon, in spec.Inbound) map[string]any {
+	g := map[string]any{"handler": GateModule, "inbound": in.Tag, "proxy": proxy(d, in)}
+	if acl := access(d, in); len(acl) > 0 {
+		g["acl"] = acl
+	}
+	return g
 }
 
 // proxy renders the handler that tunnels authenticated users.

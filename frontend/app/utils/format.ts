@@ -98,7 +98,7 @@ export const protocolLabels: Record<string, string> = {
   wireguard: 'WireGuard',
 }
 
-export const coreLabels: Record<string, string> = { xray: 'Xray', singbox: 'sing-box', edge: 'Edge', mtproto: 'MTProto', turnable: 'Turnable', naive: 'Naive' }
+export const coreLabels: Record<string, string> = { xray: 'Xray', singbox: 'sing-box', edge: 'Edge', mtproto: 'MTProto', turnable: 'Turnable', naive: 'Naive', trojan: 'Trojan' }
 
 export const resetLabels: Record<string, string> = {
   none: 'Never',

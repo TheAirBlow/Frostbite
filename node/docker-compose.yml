@@ -26,6 +26,20 @@ services:
       # For "Use Caddy's certificate": Caddy's data folder, the one holding certificates/ (/data/caddy in Caddy's image).
       # - /var/lib/caddy/.local/share/caddy:/caddy:ro
 
+  # A native trojan server that doubles as the front of a real website: everyone who is not a trojan user is sent on to it.
+  trojan:
+    <<: *agent
+    profiles: [trojan]
+    image: ${FROSTBITE_IMAGE_TROJAN:-ghcr.io/theairblow/frostbite-agent-trojan:latest}
+    environment:
+      <<: *agent-env
+      FROSTBITE_TOKEN: ${FROSTBITE_TROJAN_TOKEN:-}
+    volumes:
+      - ./data/trojan:/data
+      - ./certs:/certs
+      # For "Use Caddy's certificate": Caddy's data folder, the one holding certificates/ (/data/caddy in Caddy's image).
+      # - /var/lib/caddy/.local/share/caddy:/caddy:ro
+
   singbox:
     <<: *agent
     profiles: [singbox]

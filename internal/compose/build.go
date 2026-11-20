@@ -268,7 +268,7 @@ func warpOf(a warp.Account) *spec.Warp {
 }
 
 // readsProxy reports whether a daemon kind can read the PROXY header an edge sends in front of a connection.
-func readsProxy(kind string) bool { return kind == "xray" || kind == "naive" }
+func readsProxy(kind string) bool { return kind == "xray" || kind == "naive" || kind == "trojan" }
 
 // InternalPort is the loopback port an inbound listens on while an edge daemon fronts it.
 func InternalPort(inboundID int64) int { return 30000 + int(inboundID%30000) }

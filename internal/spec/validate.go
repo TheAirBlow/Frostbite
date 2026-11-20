@@ -41,6 +41,11 @@ func (d *Daemon) Validate() error {
 				return err
 			}
 		}
+		if in.Protocol == ProtoTrojan && d.Kind == "trojan" {
+			if err := in.validateTrojan(); err != nil {
+				return err
+			}
+		}
 		if in.Protocol == ProtoForward && (in.Forward == nil || in.Forward.Address == "" || in.Forward.Port == 0) {
 			return Invalid("forward.address", "the relay needs a target address and port")
 		}

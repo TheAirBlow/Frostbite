@@ -145,7 +145,7 @@
 
       <template v-else-if="tab === 'protocol'">
         <TurnableRoutes v-if="form.protocol === 'turnable'" v-model="turnableRoutes" :node-id="node?.id" />
-        <SchemaForm v-model="optionsModel" :fields="optionFields" prefix="options." :context="{ protocol: form.protocol }" />
+        <SchemaForm v-model="optionsModel" :fields="optionFields" prefix="options." :context="{ protocol: form.protocol, core: daemon?.kind ?? '' }" />
         <p v-if="!optionFields.length && form.protocol !== 'turnable'" class="text-base-content/50 text-sm">{{ $t('This protocol has no extra settings.') }}</p>
 
         <ConfirmButton v-if="['turnable', 'wireguard'].includes(form.protocol)" type="button" class="btn btn-sm self-start" confirm-label="Clients must update their link" @confirmed="newServerKeys">
@@ -311,7 +311,7 @@ const transportFields = computed(() => (['hysteria2', 'tuic', 'anytls', 'naive',
   ? []
   : limited(schema.value?.transport, caps.value?.transports)))
 const securityFields = computed(() => {
-  const fixedTLS = ['hysteria2', 'tuic', 'anytls', 'naive'].includes(form.value?.protocol ?? '')
+  const fixedTLS = tlsOnly(form.value?.protocol)
   const paths = certSource.value === 'files'
   const fields = limited(schema.value?.security, caps.value?.securities)
     .filter(f => !f.path.startsWith('reality') && (paths || !['cert_path', 'key_path'].includes(f.path)))
@@ -320,12 +320,18 @@ const securityFields = computed(() => {
 const optionFields = computed(() => (schema.value?.options ?? []).filter((f) => {
   if (f.path.startsWith('mux') || f.path.startsWith('fragment')) return false
   const need = f.show?.protocol
-  return !need || need.includes(form.value?.protocol ?? '')
+  const core = f.show?.core
+  return (!need || need.includes(form.value?.protocol ?? '')) && (!core || core.includes(daemon.value?.kind ?? ''))
 }))
+
+// the trojan daemon is a TLS server, like upstream trojan
+function tlsOnly(p: string | undefined) {
+  return ['hysteria2', 'tuic', 'anytls', 'naive'].includes(p ?? '') || (p === 'trojan' && daemon.value?.kind === 'trojan')
+}
 
 watch(() => form.value?.protocol, (p) => {
   // TLS only protocols need tls from the start
-  if (form.value && ['hysteria2', 'tuic', 'anytls', 'naive'].includes(p ?? '') && form.value.security.type !== 'tls') form.value.security = { type: 'tls', cert_path: '/certs/fullchain.pem', key_path: '/certs/privkey.pem' }
+  if (form.value && tlsOnly(p) && form.value.security.type !== 'tls') form.value.security = { type: 'tls', cert_path: '/certs/fullchain.pem', key_path: '/certs/privkey.pem' }
 })
 
 // an inbound saved before destinations became a list carries one flat destination, which becomes the first entry

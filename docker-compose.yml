@@ -199,6 +199,22 @@ services:
       - ./data/agent-naive:/data
       - ./certs:/certs
 
+  agent-trojan:
+    profiles: [trojan]
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      target: trojan
+    restart: unless-stopped
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    environment:
+      FROSTBITE_PANEL_URL: http://127.0.0.1:${FROSTBITE_PORT:-8080}
+      FROSTBITE_TOKEN: ${FROSTBITE_TROJAN_TOKEN:-}
+    volumes:
+      - ./data/agent-trojan:/data
+      - ./certs:/certs
+
   agent-edge:
     profiles: [edge]
     build:

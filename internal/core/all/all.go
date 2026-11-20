@@ -6,6 +6,7 @@ import (
 	_ "frostbite/internal/core/mtproto"
 	_ "frostbite/internal/core/naive"
 	_ "frostbite/internal/core/singbox"
+	_ "frostbite/internal/core/trojan"
 	_ "frostbite/internal/core/turnable"
 	_ "frostbite/internal/core/xray"
 )

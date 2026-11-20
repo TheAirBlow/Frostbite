@@ -137,6 +137,25 @@ var presets = []preset{
 		},
 	},
 	{
+		ID: "trojan-site", Label: "Trojan with a real site", Group: "Other", Cores: []string{"trojan"},
+		Description: "A trojan server that also acts as the front of a real website, like upstream trojan. Anyone who is not a trojan user, or fails to log in, is sent on to that site.",
+		Params: append(append([]presetParam{pPort("443")}, tlsParams...),
+			presetParam{Key: "site", Label: "Site address", Hint: "Where everyone else is sent, as host:port. Usually your web server.", Default: "127.0.0.1:80", Kind: "string"},
+			presetParam{Key: "site_tls", Label: "Site uses HTTPS", Default: "false", Kind: "string", Options: []string{"true", "false"}, Labels: []string{"Yes", "No"}},
+			presetParam{Key: "site_proxy", Label: "PROXY protocol to the site", Hint: "Tells the site the visitor's real address, if it accepts the PROXY protocol from this node", Default: "none", Kind: "string", Options: []string{"none", "v1", "v2"}},
+		),
+		build: func(p presetValues, req *inboundRequest) error {
+			req.Protocol, req.Port = spec.ProtoTrojan, int32(p.num("port", 443))
+			req.Security = tlsSecurity(p, "http/1.1")
+			proxy := p.str("site_proxy", "none")
+			if proxy == "none" {
+				proxy = ""
+			}
+			req.Options = spec.Options{TJDest: p.str("site", "127.0.0.1:80"), TJTLS: p.str("site_tls", "false") == "true", TJProxy: proxy}
+			return nil
+		},
+	},
+	{
 		ID: "turnable-vk", Label: "Turnable over VK", Group: "Other", Cores: []string{"turnable"},
 		Description: "Hides a tunnel in a public VK call and leads it to a destination on this node, like a WireGuard inbound. More destinations can be added afterwards.",
 		Params: []presetParam{

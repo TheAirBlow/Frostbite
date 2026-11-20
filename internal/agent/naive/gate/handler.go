@@ -29,7 +29,11 @@ type Gate struct {
 	// ProxyRaw is the handler that tunnels requests of authenticated users.
 	ProxyRaw json.RawMessage `json:"proxy,omitempty" caddy:"namespace=http.handlers inline_key=handler"`
 
-	proxy caddyhttp.MiddlewareHandler
+	// ACL is who UDP packets may go to, the same rules the proxy handler applies to connections.
+	ACL []ACLRule `json:"acl,omitempty"`
+
+	proxy    caddyhttp.MiddlewareHandler
+	udpRules acl
 }
 
 // CaddyModule returns the module information.
@@ -51,6 +55,7 @@ func (g *Gate) Provision(ctx caddy.Context) error {
 		return fmt.Errorf("the proxy handler is a %T, not a middleware", mod)
 	}
 	g.proxy = h
+	g.udpRules = newACL(g.ACL)
 	return nil
 }
 
@@ -87,7 +92,13 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.
 
 	r = r.WithContext(ctx)
 	r.Body = &countedBody{ReadCloser: r.Body, t: t}
-	return g.proxy.ServeHTTP(&countedWriter{ResponseWriter: w, t: t}, r, pass)
+	cw := &countedWriter{ResponseWriter: w, t: t}
+	if r.Method == http.MethodConnect {
+		if v := uotVersion(r); v != 0 {
+			return g.serveUoT(cw, r, v)
+		}
+	}
+	return g.proxy.ServeHTTP(cw, r, pass)
 }
 
 // proxyCredentials reads the Basic credentials of a Proxy-Authorization header.

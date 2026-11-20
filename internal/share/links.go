@@ -61,7 +61,10 @@ func Link(u spec.Upstream) (string, error) {
 		}
 		return fmt.Sprintf("anytls://%s@%s?%s#%s", url.QueryEscape(u.Password), hostport, q.Encode(), name), nil
 	case spec.ProtoNaive:
-		return fmt.Sprintf("naive+https://%s:%s@%s#%s", url.QueryEscape(u.Username), url.QueryEscape(u.Password), hostport, name), nil
+		// uot and sni are the parameters Throne and NekoBox read, UDP over TCP is answered by sing-box and the naive daemon
+		q := url.Values{"uot": {"1"}}
+		setIf(q, "sni", u.Security.SNI)
+		return fmt.Sprintf("naive+https://%s:%s@%s?%s#%s", url.QueryEscape(u.Username), url.QueryEscape(u.Password), hostport, q.Encode(), name), nil
 	case spec.ProtoMTProto:
 		secret := u.Password
 		if u.Options.MTMode == "padded" {

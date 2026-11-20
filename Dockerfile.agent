@@ -28,6 +28,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent .
 FROM build AS build-naive
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-naive
 
+FROM build AS build-trojan
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-trojan
+
 FROM alpine:3.22 AS fetch-xray
 ARG XRAY_VERSION=v26.3.27
 ARG TARGETARCH
@@ -66,4 +69,8 @@ ENTRYPOINT ["agent"]
 
 FROM base AS naive
 COPY --from=build-naive /out/agent /usr/local/bin/agent
+ENTRYPOINT ["agent"]
+
+FROM base AS trojan
+COPY --from=build-trojan /out/agent /usr/local/bin/agent
 ENTRYPOINT ["agent"]

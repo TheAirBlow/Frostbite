@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -28,6 +29,8 @@ import (
 	"testing"
 	"time"
 
+	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/common/uot"
 	"golang.org/x/net/http2"
 
 	corenaive "frostbite/internal/core/naive"
@@ -563,5 +566,211 @@ func TestHTTPSSite(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// udpEcho answers every packet with the same bytes.
+func udpEcho(t *testing.T) *net.UDPAddr {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { pc.Close() })
+	go func() {
+		buf := make([]byte, 2048)
+		for {
+			n, addr, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			pc.WriteTo(buf[:n], addr)
+		}
+	}()
+	return pc.LocalAddr().(*net.UDPAddr)
+}
+
+// padded is the client end of a NaiveProxy tunnel, which pads the first frames in both directions.
+type padded struct {
+	net.Conn
+	r             io.Reader
+	reads, writes int
+	remain, skip  int
+}
+
+func (p *padded) Read(b []byte) (int, error) {
+	for {
+		if p.remain > 0 {
+			n, err := p.r.Read(b[:min(len(b), p.remain)])
+			p.remain -= n
+			return n, err
+		}
+		if p.skip > 0 {
+			if _, err := io.CopyN(io.Discard, p.r, int64(p.skip)); err != nil {
+				return 0, err
+			}
+			p.skip = 0
+		}
+		if p.reads >= 8 {
+			return p.r.Read(b)
+		}
+		var h [3]byte
+		if _, err := io.ReadFull(p.r, h[:]); err != nil {
+			return 0, err
+		}
+		p.reads++
+		p.remain, p.skip = int(h[0])<<8|int(h[1]), int(h[2])
+	}
+}
+
+func (p *padded) Write(b []byte) (int, error) {
+	if p.writes >= 8 {
+		return p.Conn.Write(b)
+	}
+	p.writes++
+	out := make([]byte, 3+len(b)+7)
+	out[0], out[1], out[2] = byte(len(b)>>8), byte(len(b)), 7
+	copy(out[3:], b)
+	if _, err := p.Conn.Write(out); err != nil {
+		return 0, err
+	}
+	return len(b), nil
+}
+
+// uotDialer reaches the proxy's UDP over TCP address the way a NaiveProxy client does.
+type uotDialer struct {
+	f      *fixture
+	t      *testing.T
+	user   string
+	pass   string
+	legacy bool
+}
+
+func (d uotDialer) DialContext(ctx context.Context, network string, dest M.Socksaddr) (net.Conn, error) {
+	conn, err := tls.Dial("tcp", d.f.addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(conn, "CONNECT %s:0 HTTP/1.1\r\nHost: %s:0\r\nProxy-Authorization: %s\r\n\r\n", dest.Fqdn, dest.Fqdn, basic(d.user, d.pass))
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("connect: %s", resp.Status)
+	}
+	return &bufConn{Conn: conn, r: br}, nil
+}
+
+func (d uotDialer) ListenPacket(context.Context, M.Socksaddr) (net.PacketConn, error) {
+	return nil, errors.New("not used")
+}
+
+type bufConn struct {
+	net.Conn
+	r io.Reader
+}
+
+func (c *bufConn) Read(b []byte) (int, error) { return c.r.Read(b) }
+
+func TestUDPOverTCP(t *testing.T) {
+	echo := udpEcho(t)
+	s := newSite(t)
+	f := newFixture(t, func(in *spec.Inbound) { in.Options.NaiveDest = strings.TrimPrefix(s.URL, "http://") })
+	dest := M.SocksaddrFromNetIP(echo.AddrPort())
+
+	for _, version := range []uint8{uot.Version, uot.LegacyVersion} {
+		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+			client := &uot.Client{Dialer: uotDialer{f: f, t: t, user: "u1", pass: "pw1"}, Version: version}
+			conn, err := client.DialContext(context.Background(), "udp", dest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			conn.SetDeadline(time.Now().Add(5 * time.Second))
+			if _, err := conn.Write([]byte("ping")); err != nil {
+				t.Fatal(err)
+			}
+			got := make([]byte, 16)
+			n, err := conn.Read(got)
+			if err != nil || string(got[:n]) != "ping" {
+				t.Fatalf("got %q, %v\n%s", got[:n], err, f.rt.Logs(10))
+			}
+		})
+	}
+
+	st, _ := f.rt.Stats(context.Background())
+	if st.Users["u1"].Up == 0 || st.Users["u1"].Down == 0 {
+		t.Errorf("the packets were not counted: %v", st.Users)
+	}
+}
+
+func TestUDPOverTCPPaddedH2(t *testing.T) {
+	echo := udpEcho(t)
+	s := newSite(t)
+	f := newFixture(t, func(in *spec.Inbound) { in.Options.NaiveDest = strings.TrimPrefix(s.URL, "http://") })
+
+	tr := &http2.Transport{DialTLSContext: func(ctx context.Context, n, a string, _ *tls.Config) (net.Conn, error) {
+		return tls.Dial(n, a, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"h2"}})
+	}}
+	pr, pw := io.Pipe()
+	authority := uot.MagicAddress + ":0"
+	req := &http.Request{Method: http.MethodConnect, URL: &url.URL{Scheme: "https", Host: f.addr}, Host: authority, Body: pr,
+		Header: http.Header{"Proxy-Authorization": {basic("u1", "pw1")}, "Padding": {"!#$()+<>?@[]^`{}~~~~~~~~~~~~~~~~~~~~~~~~~~"}}}
+	resp, err := tr.RoundTrip(req)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("connect: %v %v", resp, err)
+	}
+	if resp.Header.Get("Padding") == "" {
+		t.Error("the answer has no Padding header")
+	}
+	conn := &padded{Conn: pipeConn{pw, resp.Body}, r: resp.Body}
+	client := uot.NewLazyConn(conn, uot.Request{IsConnect: true, Destination: M.SocksaddrFromNetIP(echo.AddrPort())})
+	defer client.Close()
+
+	// more than the padded frames, so the switch to plain data is covered
+	for i := 0; i < 12; i++ {
+		msg := fmt.Sprintf("packet %d", i)
+		if _, err := client.Write([]byte(msg)); err != nil {
+			t.Fatal(err)
+		}
+		got := make([]byte, 64)
+		n, err := client.Read(got)
+		if err != nil || string(got[:n]) != msg {
+			t.Fatalf("packet %d: got %q, %v", i, got[:n], err)
+		}
+	}
+}
+
+// pipeConn joins a request pipe and a response body into one connection.
+type pipeConn struct {
+	w *io.PipeWriter
+	r io.ReadCloser
+}
+
+func (c pipeConn) Read(b []byte) (int, error)     { return c.r.Read(b) }
+func (c pipeConn) Write(b []byte) (int, error)    { return c.w.Write(b) }
+func (c pipeConn) Close() error                   { c.w.Close(); return c.r.Close() }
+func (pipeConn) LocalAddr() net.Addr              { return nil }
+func (pipeConn) RemoteAddr() net.Addr             { return nil }
+func (pipeConn) SetDeadline(time.Time) error      { return nil }
+func (pipeConn) SetReadDeadline(time.Time) error  { return nil }
+func (pipeConn) SetWriteDeadline(time.Time) error { return nil }
+
+func TestUDPToPrivateAddressesIsDropped(t *testing.T) {
+	// the rule that lets loopback through is the fixture's, so ask for an address no rule mentions
+	s := newSite(t)
+	f := newFixture(t, func(in *spec.Inbound) { in.Options.NaiveDest = strings.TrimPrefix(s.URL, "http://") })
+	client := &uot.Client{Dialer: uotDialer{f: f, t: t, user: "u1", pass: "pw1"}, Version: uot.Version}
+	conn, err := client.DialContext(context.Background(), "udp", M.ParseSocksaddr("192.168.1.1:53"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(500 * time.Millisecond))
+	conn.Write([]byte("x"))
+	if n, err := conn.Read(make([]byte, 8)); err == nil {
+		t.Errorf("got an answer of %d bytes from a private address", n)
 	}
 }

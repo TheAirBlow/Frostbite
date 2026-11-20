@@ -2,7 +2,7 @@
 A VPN management panel built around the idea that servers and the panel should not care about each other.
 
 - **Panel** (Go + Postgres) holds users, nodes, inbounds, routing and subscriptions, and serves the web UI.
-- **Daemons** are one small binary per core (`agent-xray`, `agent-singbox`, `agent-mtproto`, `agent-turnable`, `agent-naive`). They dial the panel, get their config pushed, and report usage back. A node can run any mix of them.
+- **Daemons** are one small binary per core (`agent-xray`, `agent-singbox`, `agent-mtproto`, `agent-turnable`, `agent-naive`, `agent-trojan`). They dial the panel, get their config pushed, and report usage back. A node can run any mix of them.
 - **Bridges** are first class. A *relay* forwards raw traffic to one of your inbounds. A *chain* is a full server whose traffic leaves through another of your servers, or any proxy from a share link.
 - **Frontend** is a server rendered Nuxt app (Tailwind + daisyUI) in its own container. It is the only thing that is published: it proxies `/api`, `/sub`, `/node` and the daemon websocket to the panel, which has no published port.
 - **Monitoring** is optional: the panel exposes Prometheus metrics and ships a Grafana dashboard.
@@ -42,7 +42,7 @@ The panel serves `/metrics` on its own port (`FROSTBITE_METRICS_ADDR`, `127.0.0.
 The dashboard is generated: edit `docker/grafana/build_dashboard.py` and run it to rewrite `docker/grafana/dashboards/frostbite.json`.
 
 ## What it does
-- **Cores:** Xray and sing-box daemons, an **mtproto** daemon (Telegram proxy with a secret per user, fake TLS disguise), a **turnable** daemon that hides tunnels in a public VK call, a **naive** daemon (NaiveProxy inside Caddy that sends everyone who is not a proxy user on to your real site, with the visitor's address passed on by PROXY protocol or a header), plus an **edge** daemon that shares one public port between them by TLS server name and sends everything else to a decoy.
+- **Cores:** Xray and sing-box daemons, an **mtproto** daemon (Telegram proxy with a secret per user, fake TLS disguise), a **turnable** daemon that hides tunnels in a public VK call, a **naive** daemon (NaiveProxy inside Caddy that sends everyone who is not a proxy user on to your real site, with the visitor's address passed on by PROXY protocol or a header), a **trojan** daemon (a native trojan server that, like upstream trojan, sends everyone who is not a user on to your real site, with PROXY protocol, HTTPS, server name, header and per-name, per-ALPN or per-path site controls), plus an **edge** daemon that shares one public port between them by TLS server name and sends everything else to a decoy.
 - **Protocols:** VLESS (Reality, XHTTP, WS, gRPC, HTTPUpgrade), VMess, Trojan, Shadowsocks 2022, Hysteria2, TUIC, AnyTLS, Naive, SOCKS/HTTP and WireGuard.
 - **Bridges:** relays and chains, with a map of how your servers connect.
 - **Certificates:** daemons get and renew Let's Encrypt certificates themselves, and show a self signed stand-in until the real one lands.
@@ -54,7 +54,7 @@ The dashboard is generated: edit `docker/grafana/build_dashboard.py` and run it 
 
 ## Layout
 ```
-cmd/panel, cmd/agent-xray, cmd/agent-singbox, cmd/agent-mtproto, cmd/agent-turnable, cmd/agent-naive
+cmd/panel, cmd/agent-xray, cmd/agent-singbox, cmd/agent-mtproto, cmd/agent-turnable, cmd/agent-naive, cmd/agent-trojan
 internal/spec      the core-agnostic description of what a daemon runs
 internal/core      renderers: spec -> native xray / sing-box config, behind a registry
 internal/compose   database state -> one spec per daemon (squads, bridges, system users)
@@ -94,7 +94,7 @@ A single binary with the UI embedded is still possible: `bun run generate` in `f
 Configuration is `FROSTBITE_*` environment variables (or `data/config.json`), see `internal/common/config.go`.
 
 ## Things to know
-- Behind an edge daemon only Xray inbounds learn the real client address (PROXY protocol). sing-box dropped support for it, so IP limits and "connected from" are not accurate for those.
+- Behind an edge daemon only Xray, naive and trojan inbounds learn the real client address (PROXY protocol). sing-box dropped support for it, so IP limits and "connected from" are not accurate for those.
 - WARP needs UDP to Cloudflare from the node. Some networks block it, in which case registration works but traffic does not flow.
 - Automatic certificates use the HTTP-01 challenge, so the domain must point at the node and port 80 must be free there.
 - I could not run Docker here, so the Dockerfiles and compose files were written but not built. Everything else was run for real, including the panel, the proxy (HTTP and the daemon websocket), Prometheus and Grafana as plain processes.

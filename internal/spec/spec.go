@@ -256,6 +256,26 @@ type Options struct {
 	NaiveSkip   bool                `json:"naive_dest_insecure,omitempty" ui:"label=Skip site certificate check,show=protocol:naive,advanced"`
 	NaiveProxy  string              `json:"naive_dest_proxy,omitempty" ui:"label=PROXY protocol to the site,hint=Tells the site the visitor's real address,options=|v1|v2,show=protocol:naive"`
 	NaiveHeader string              `json:"naive_ip_header,omitempty" ui:"label=Client IP header,hint=Header that carries the visitor's address to the site. Empty means X-Forwarded-For and none means no header.,show=protocol:naive"`
+	TJDest      string              `json:"trojan_dest,omitempty" ui:"label=Site address,hint=Where visitors and failed logins are sent once TLS is off, as host:port. Usually your web server.,show=core:trojan"`
+	TJTLS       bool                `json:"trojan_dest_tls,omitempty" ui:"label=Site uses HTTPS,show=core:trojan"`
+	TJSNI       string              `json:"trojan_dest_sni,omitempty" ui:"label=Site server name,hint=Sent to the site over HTTPS. Empty uses the name the visitor asked for.,show=core:trojan,advanced"`
+	TJSkip      bool                `json:"trojan_dest_insecure,omitempty" ui:"label=Skip site certificate check,show=core:trojan,advanced"`
+	TJProxy     string              `json:"trojan_dest_proxy,omitempty" ui:"label=PROXY protocol to the site,hint=Tells the site the visitor's real address,options=|v1|v2,show=core:trojan"`
+	TJIPHeader  string              `json:"trojan_ip_header,omitempty" ui:"label=Client IP header,hint=Reads visitors' HTTP requests and puts their address in this header, such as X-Forwarded-For. Empty passes the stream on untouched.,show=core:trojan"`
+	TJHeaders   map[string]string   `json:"trojan_dest_headers,omitempty" ui:"label=Extra site headers,hint=Set on every request to the site. Like the client IP header this makes the daemon read HTTP.,show=core:trojan,advanced"`
+	TJBySNI     map[string]string   `json:"trojan_sni_dest,omitempty" ui:"label=Site by server name,hint=A server name or *.example.com to host:port. Checked before ALPN and path.,show=core:trojan,advanced"`
+	TJByALPN    map[string]string   `json:"trojan_alpn_dest,omitempty" ui:"label=Site by ALPN,hint=An ALPN such as h2 to host:port.,show=core:trojan,advanced"`
+	TJByPath    map[string]string   `json:"trojan_path_dest,omitempty" ui:"label=Site by path,hint=A path prefix such as /blog to host:port. HTTP/1 only.,show=core:trojan,advanced"`
+	TJPlain     string              `json:"trojan_plain,omitempty" ui:"label=Plain HTTP visitors,hint=What someone speaking plain HTTP to this port gets. Empty closes the connection.,options=|site|redirect|nginx,show=core:trojan,advanced"`
+	TJMinTLS    string              `json:"trojan_tls_min,omitempty" ui:"label=Lowest TLS version,options=|1.2|1.3,show=core:trojan,advanced"`
+	TJCiphers   []string            `json:"trojan_ciphers,omitempty" ui:"label=TLS 1.2 cipher suites,hint=Go names such as TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256. TLS 1.3 suites are fixed.,show=core:trojan,advanced"`
+	TJCurves    []string            `json:"trojan_curves,omitempty" ui:"label=Key exchange groups,hint=X25519MLKEM768 X25519 P-256 P-384 or P-521 in order of preference,show=core:trojan,advanced"`
+	TJNoTicket  bool                `json:"trojan_no_tickets,omitempty" ui:"label=Turn off session tickets,show=core:trojan,advanced"`
+	TJUDPIdle   int                 `json:"trojan_udp_timeout,omitempty" ui:"label=UDP idle timeout (s),hint=60 when empty,show=core:trojan,advanced"`
+	TJFastOpen  bool                `json:"trojan_fast_open,omitempty" ui:"label=TCP Fast Open,show=core:trojan,advanced"`
+	TJReuse     bool                `json:"trojan_reuse_port,omitempty" ui:"label=Reuse port,show=core:trojan,advanced"`
+	TJNagle     bool                `json:"trojan_nagle,omitempty" ui:"label=Keep Nagle's algorithm,show=core:trojan,advanced"`
+	TJNoAlive   bool                `json:"trojan_no_keepalive,omitempty" ui:"label=Turn off TCP keep-alive,show=core:trojan,advanced"`
 	WGAddress   string              `json:"wg_address,omitempty"` // a user's own tunnel address, filled in for client profiles
 	Auth        bool                `json:"auth,omitempty" ui:"label=Require auth,show=protocol:socks|http|mixed"`
 	UDP         bool                `json:"udp,omitempty" ui:"label=Allow UDP,show=protocol:socks|mixed,advanced"`

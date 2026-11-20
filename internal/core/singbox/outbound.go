@@ -100,6 +100,8 @@ func OutboundFor(u spec.Upstream, tag string) (map[string]any, error) {
 		m["username"], m["password"] = u.Username, u.Password
 	case spec.ProtoNaive:
 		m["type"], m["username"], m["password"] = "naive", u.Username, u.Password
+		// the Frostbite naive daemon and sing-box both answer UDP over TCP, which plain NaiveProxy has no way to carry
+		m["udp_over_tcp"] = map[string]any{"enabled": true, "version": 2}
 	case spec.ProtoHTTP:
 		m["type"], m["username"], m["password"] = "http", u.Username, u.Password
 	default:
