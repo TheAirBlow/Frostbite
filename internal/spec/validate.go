@@ -36,6 +36,11 @@ func (d *Daemon) Validate() error {
 		if err := in.validateGuard(); err != nil {
 			return err
 		}
+		if in.Protocol == ProtoNaive && d.Kind == "naive" {
+			if err := in.Options.validateNaive(); err != nil {
+				return err
+			}
+		}
 		if in.Protocol == ProtoForward && (in.Forward == nil || in.Forward.Address == "" || in.Forward.Port == 0) {
 			return Invalid("forward.address", "the relay needs a target address and port")
 		}
@@ -80,25 +85,29 @@ func (in Inbound) validateSecurity() error {
 			return Invalid("security.reality.xver", "the PROXY header version must be 0, 1 or 2")
 		}
 	case SecurityTLS:
-		if in.Security.ACME != nil && in.Security.Caddy != nil {
-			return Invalid("security.caddy.domain", "pick either an automatic certificate or Caddy's, not both")
+		if in.Security.ACME != nil && in.Security.Existing != nil {
+			return Invalid("security.existing.domain", "pick either an automatic certificate or an existing one, not both")
 		}
 		if a := in.Security.ACME; a != nil {
 			if a.Domain == "" || net.ParseIP(a.Domain) != nil {
 				return Invalid("security.acme.domain", "automatic certificates need a domain name, not an address")
 			}
-		} else if c := in.Security.Caddy; c != nil {
-			if c.Domain == "" || net.ParseIP(c.Domain) != nil || strings.ContainsAny(c.Domain, "/\\ ") {
-				return Invalid("security.caddy.domain", "Caddy's certificate is looked up by domain name, not an address")
+			if strings.HasPrefix(a.Domain, "*.") {
+				return Invalid("security.acme.domain", "automatic certificates can't be wildcards, use an existing one instead")
 			}
-			if c.Dir != "" && !strings.HasPrefix(c.Dir, "/") {
-				return Invalid("security.caddy.dir", "use an absolute path")
+		} else if e := in.Security.Existing; e != nil {
+			if e.Domain == "" || net.ParseIP(e.Domain) != nil || strings.ContainsAny(e.Domain, "/\\ ") {
+				return Invalid("security.existing.domain", "existing certificates are looked up by domain name, not an address")
 			}
-		} else if in.Security.CertPath == "" || in.Security.KeyPath == "" {
+			if e.Dir != "" && !strings.HasPrefix(e.Dir, "/") {
+				return Invalid("security.existing.dir", "use an absolute path")
+			}
+		} else if (in.Security.CertPath == "") != (in.Security.KeyPath == "") {
+			// both empty is fine: the daemon serves a self signed certificate
 			if in.Security.CertPath == "" {
-				return Invalid("security.cert_path", "tls needs a certificate")
+				return Invalid("security.cert_path", "give the certificate file too, or leave both paths empty")
 			}
-			return Invalid("security.key_path", "tls needs a key")
+			return Invalid("security.key_path", "give the key file too, or leave both paths empty")
 		}
 	}
 	switch in.Protocol {

@@ -13,8 +13,8 @@
 
     <div ref="stickTop" aria-hidden="true" />
     <div
-      class="sticky top-0 z-20 -mx-4 flex flex-col gap-3 border-b px-4 pt-2 pb-3 transition-colors sm:-mx-6 sm:px-6"
-      :class="stuck ? 'bg-base-100/90 border-base-300 backdrop-blur' : 'border-transparent'"
+      class="glass-fields sticky top-0 z-20 -mx-4 flex flex-col gap-3 border-b px-4 pt-2 pb-3 transition-colors sm:-mx-6 sm:px-6"
+      :class="stuck ? 'bg-base-100/40 border-base-content/10 backdrop-blur-md' : 'border-transparent'"
     >
       <div class="flex flex-wrap items-center gap-2">
         <label class="input input-sm flex min-w-52 flex-1 items-center gap-2 sm:max-w-sm">

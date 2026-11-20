@@ -23,6 +23,11 @@ export function isIp(v: string): boolean {
   return checkIp(v) === undefined
 }
 
+// A name a certificate or a TLS client can carry, such as vpn.example.com or *.example.com.
+export function checkServerName(v: string): Check {
+  return /^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(v) ? undefined : 'Not a valid server name'
+}
+
 export function checkDomain(v: string): Check {
   const s = v.trim().replace(/\.$/, '')
   if (!s || s.length > 253) return 'That is not a valid domain name'

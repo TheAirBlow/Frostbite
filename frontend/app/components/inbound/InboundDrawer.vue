@@ -54,31 +54,30 @@
           <SchemaForm v-if="!['mtproto', 'turnable'].includes(form.protocol)" v-model="securityModel" :fields="securityFields" prefix="security." :context="{ protocol: form.protocol }" />
 
           <section v-if="form.security.type === 'tls'" class="surface flex flex-col gap-3 p-4">
-            <ToggleRow :model-value="!!form.security.acme" label="Get the certificate automatically" hint="The domain must point here and port 80 must be free." @update:model-value="setAcme" />
-            <ToggleRow :model-value="!!form.security.caddy" label="Use Caddy's certificate" hint="Use the certificate Caddy keeps for the domain." @update:model-value="setCaddy" />
-            <template v-if="form.security.caddy">
-              <FormField label="Domain" name="security.caddy.domain" hint="As written in the Caddyfile. A wildcard certificate for the parent domain works too." required><input v-model="caddy!.domain" class="input w-full font-mono" :placeholder="$t('vpn.example.com')" autocomplete="off"></FormField>
+            <FormField label="Certificate" name="cert_source" :hint="certHints[certSource]">
+              <select v-model="certSource" class="select w-full">
+                <option value="existing">{{ $t('Use an existing one (Caddy, certbot)') }}</option>
+                <option value="acme">{{ $t("Get one from Let's Encrypt") }}</option>
+                <option value="files">{{ $t('Files on the node') }}</option>
+                <option value="self">{{ $t('Self-signed') }}</option>
+              </select>
+            </FormField>
+            <template v-if="existing">
+              <FormField label="Certificate for" name="security.existing.domain" hint="The name on the certificate, such as *.example.com. Clients still ask for the SNI above." required><input v-model="existing.domain" class="input w-full font-mono" :placeholder="$t('*.example.com')" autocomplete="off"></FormField>
               <Advanced>
-                <FormField label="Caddy data folder" name="security.caddy.dir" hint="Caddy's data folder. Empty uses /caddy."><input v-model="caddy!.dir" class="input w-full font-mono" placeholder="/caddy" autocomplete="off"></FormField>
+                <FormField label="Search folder" name="security.existing.dir" hint="Where to look instead of the usual places: /caddy, /letsencrypt, /etc/letsencrypt and Caddy's native data folder."><input v-model="existing.dir" class="input w-full font-mono" placeholder="/caddy" autocomplete="off"></FormField>
               </Advanced>
-              <p v-for="c in caddyStates" :key="c.domain" class="flex items-center gap-2 text-sm" :class="c.ok ? 'text-success' : 'text-warning'">
-                <Icon :name="c.ok ? 'fa6-solid:circle-check' : 'fa6-solid:hourglass-half'" size="13" />
-                <template v-if="c.ok">Certificate valid until {{ formatDate(c.expires) }}.</template>
-                <template v-else>{{ c.placeholder ? 'Serving a self signed stand-in. ' : '' }}{{ c.error || 'Waiting for the daemon.' }}</template>
-              </p>
             </template>
-            <template v-if="form.security.acme">
-              <div class="grid gap-3 sm:grid-cols-2">
-                <FormField label="Domain" name="security.acme.domain" required><input v-model="acme!.domain" class="input w-full font-mono" :placeholder="$t('vpn.example.com')" autocomplete="off"></FormField>
-                <FormField label="Email" name="security.acme.email" hint="Optional. Let's Encrypt writes here before a certificate expires."><input v-model="acme!.email" type="email" class="input w-full"></FormField>
-              </div>
-              <p v-for="c in certStates" :key="c.domain" class="flex items-center gap-2 text-sm" :class="c.ok ? 'text-success' : c.placeholder ? 'text-warning' : 'text-base-content/60'">
-                <Icon :name="c.ok ? 'fa6-solid:circle-check' : 'fa6-solid:hourglass-half'" size="13" />
-                <template v-if="c.ok">Certificate valid until {{ formatDate(c.expires) }}.</template>
-                <template v-else-if="c.placeholder">Serving a self signed stand-in{{ c.error ? `. Last attempt: ${c.error}` : '. Requesting the real one…' }}</template>
-                <template v-else>{{ c.error || 'Waiting for the daemon.' }}</template>
-              </p>
-            </template>
+            <div v-if="acme" class="grid gap-3 sm:grid-cols-2">
+              <FormField label="Certificate for" name="security.acme.domain" hint="Must point at this node, with port 80 free." required><input v-model="acme.domain" class="input w-full font-mono" :placeholder="$t('vpn.example.com')" autocomplete="off"></FormField>
+              <FormField label="Email" name="security.acme.email" hint="Optional. Let's Encrypt writes here before a certificate expires."><input v-model="acme.email" type="email" class="input w-full"></FormField>
+            </div>
+            <p v-for="c in certStates" :key="c.domain" class="flex items-center gap-2 text-sm" :class="c.ok ? 'text-success' : c.placeholder ? 'text-warning' : 'text-base-content/60'">
+              <Icon :name="c.ok ? 'fa6-solid:circle-check' : 'fa6-solid:hourglass-half'" size="13" />
+              <template v-if="c.ok">Certificate valid until {{ formatDate(c.expires) }}.</template>
+              <template v-else-if="c.placeholder">Serving a self-signed stand-in. {{ c.error || 'Waiting for the real one.' }}</template>
+              <template v-else>{{ c.error || 'Waiting for the daemon.' }}</template>
+            </p>
           </section>
 
           <section v-if="form.security.type === 'reality' && reality" class="surface flex flex-col gap-3 p-4">
@@ -111,10 +110,13 @@
           </section>
 
           <section v-if="guardable" class="surface flex flex-col gap-3 p-4">
-            <ToggleRow :model-value="!!guard?.enabled" label="Guard the real site" hint="Only for a site you run behind this inbound." @update:model-value="setGuard({ enabled: $event })" />
+            <ToggleRow :model-value="!!guard?.enabled" label="Guard the disguise" :hint="guardHint" @update:model-value="setGuard({ enabled: $event })" />
             <template v-if="guard?.enabled">
-              <FormField label="Real site" name="options.guard.target" :hint="guardTargetHint" :required="!guardDefaultTarget">
-                <input class="input w-full font-mono" :value="guard.target ?? ''" :placeholder="guardDefaultTarget || '127.0.0.1:8443'" autocomplete="off" @input="setGuard({ target: ($event.target as HTMLInputElement).value })">
+              <p v-if="guardDefaultTarget" class="text-base-content/60 text-sm">
+                {{ $t('Guarding') }} <span class="text-base-content font-mono">{{ guardDefaultTarget }}</span>, {{ $t('the site this inbound already pretends to be.') }}
+              </p>
+              <FormField v-else label="Real site" name="options.guard.target" hint="host:port of the site behind this inbound, for example Caddy on 127.0.0.1:8443." required>
+                <input class="input w-full font-mono" :value="guard.target ?? ''" placeholder="127.0.0.1:8443" autocomplete="off" @input="setGuard({ target: ($event.target as HTMLInputElement).value })">
               </FormField>
               <Advanced>
                 <div class="grid gap-3 sm:grid-cols-2">
@@ -310,7 +312,9 @@ const transportFields = computed(() => (['hysteria2', 'tuic', 'anytls', 'naive',
   : limited(schema.value?.transport, caps.value?.transports)))
 const securityFields = computed(() => {
   const fixedTLS = ['hysteria2', 'tuic', 'anytls', 'naive'].includes(form.value?.protocol ?? '')
-  const fields = limited(schema.value?.security, caps.value?.securities).filter(f => !f.path.startsWith('reality'))
+  const paths = certSource.value === 'files'
+  const fields = limited(schema.value?.security, caps.value?.securities)
+    .filter(f => !f.path.startsWith('reality') && (paths || !['cert_path', 'key_path'].includes(f.path)))
   return fixedTLS ? fields.filter(f => f.path !== 'type') : fields
 })
 const optionFields = computed(() => (schema.value?.options ?? []).filter((f) => {
@@ -371,7 +375,6 @@ async function newServerKeys() {
 }
 
 const routePlaceholders = ['host', 'port', 'user', 'uuid', 'password', 'name', 'node', 'country', 'route']
-const checkServerName = (v: string) => (/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(v) ? undefined : 'Not a valid server name')
 const checkShortId = (v: string) => (/^([0-9a-f]{2}){0,8}$/i.test(v) ? undefined : 'Use up to 16 hex characters, an even number')
 
 const forward = computed(() => form.value!.forward ?? ({ address: '', port: 0, network: 'tcp' } as Record<string, unknown>))
@@ -383,20 +386,35 @@ const reality = computed<Reality | null>(() => {
   return s.reality as Reality
 })
 
+// Where a TLS inbound gets its certificate. Paths are only asked for with "files"; empty ones mean self-signed.
+type CertSource = 'existing' | 'acme' | 'files' | 'self'
+const certHints: Record<CertSource, string> = {
+  existing: 'Found in Caddy\'s or certbot\'s storage on the node, renewals included. A self-signed stand-in covers the wait.',
+  acme: 'The daemon asks Let\'s Encrypt itself and renews on its own.',
+  files: 'Certificate and key files already on the node. Leave both empty for a self-signed one.',
+  self: 'Clients have to allow insecure certificates.',
+}
 const acme = computed(() => (form.value?.security.acme ?? null) as { domain: string, email?: string } | null)
-function setAcme(on: boolean) {
-  const sec = form.value!.security
-  sec.acme = on ? { domain: String(sec.sni ?? ''), email: '' } : null
-  if (on) sec.caddy = null
-}
-
-const caddy = computed(() => (form.value?.security.caddy ?? null) as { domain: string, dir?: string } | null)
-function setCaddy(on: boolean) {
-  const sec = form.value!.security
-  sec.caddy = on ? { domain: String(sec.sni ?? ''), dir: '' } : null
-  if (on) sec.acme = null
-}
-const caddyStates = computed(() => (daemon.value?.live.certs ?? []).filter(c => c.domain === caddy.value?.domain))
+const existing = computed(() => (form.value?.security.existing ?? null) as { domain: string, dir?: string } | null)
+// "files" and "self" look the same while both paths are empty, so the choice itself is remembered
+const certChoice = ref<CertSource | null>(null)
+const certSource = computed<CertSource>({
+  get: () => {
+    const s = form.value?.security
+    if (s?.acme) return 'acme'
+    if (s?.existing) return 'existing'
+    if (certChoice.value === 'files' || s?.cert_path || s?.key_path) return 'files'
+    return 'self'
+  },
+  set: (v) => {
+    const sec = form.value!.security
+    const name = String(acme.value?.domain || existing.value?.domain || sec.sni || '')
+    certChoice.value = v
+    sec.acme = v === 'acme' ? { domain: name.replace(/^\*\./, ''), email: '' } : null
+    sec.existing = v === 'existing' ? { domain: name, dir: '' } : null
+    if (v !== 'files') sec.cert_path = sec.key_path = ''
+  },
+})
 
 const guard = computed(() => (form.value?.options.guard ?? null) as Guard | null)
 function setGuard(patch: Partial<Guard>) {
@@ -417,12 +435,10 @@ const guardDefaultTarget = computed(() => {
   if (f.protocol === 'mtproto' && f.options.mt_domain) return `${f.options.mt_domain}:443`
   return ''
 })
-const guardTargetHint = computed(() => guardDefaultTarget.value
-  ? 'Empty uses the handshake target. Set it when the site listens somewhere else.'
-  : 'host:port of the site this inbound fronts, for example Caddy on 127.0.0.1:8443.')
+const guardHint = 'Checks every so often, from the node, that this port still answers like the real site. If the core stops answering, it is restarted, and while it is down the daemon passes the port straight to the site, so a probe never finds a dead or odd port.'
 const certStates = computed(() => {
-  const domain = acme.value?.domain
-  return (daemon.value?.live.certs ?? []).filter(c => c.domain === domain)
+  const domain = acme.value?.domain || existing.value?.domain
+  return domain ? (daemon.value?.live.certs ?? []).filter(c => c.domain === domain) : []
 })
 
 const mux = computed(() => (form.value?.options.mux ?? null) as Mux | null)
@@ -466,21 +482,21 @@ function rulesOf(f: Form): Record<string, string | undefined> {
       e['security.acme.domain'] = checkRequired(a.domain, 'Which domain is the certificate for?') ?? checkDomain(String(a.domain))
       if (a.email) e['security.acme.email'] = checkEmail(a.email)
     }
-    else if (sec.caddy) {
-      const c = sec.caddy as { domain?: string, dir?: string }
-      e['security.caddy.domain'] = checkRequired(c.domain, 'Which domain does Caddy keep a certificate for?') ?? checkServerName(String(c.domain))
-      if (c.dir && !String(c.dir).startsWith('/')) e['security.caddy.dir'] = 'Use an absolute path'
+    else if (sec.existing) {
+      const c = sec.existing as { domain?: string, dir?: string }
+      e['security.existing.domain'] = checkRequired(c.domain, 'Which name is the certificate for?') ?? checkServerName(String(c.domain))
+      if (c.dir && !String(c.dir).startsWith('/')) e['security.existing.dir'] = 'Use an absolute path'
     }
-    else {
-      e['security.cert_path'] = checkRequired(sec.cert_path, 'Where is the certificate file?')
-      e['security.key_path'] = checkRequired(sec.key_path, 'Where is the key file?')
+    else if (!sec.cert_path !== !sec.key_path) {
+      if (!sec.cert_path) e['security.cert_path'] = 'Give the certificate file too, or leave both empty'
+      else e['security.key_path'] = 'Give the key file too, or leave both empty'
     }
   }
 
   const o = f.options
   const g = o.guard as Guard | undefined
   if (g?.enabled) {
-    e['options.guard.target'] = g.target ? checkHostPort(g.target) : (guardDefaultTarget.value ? undefined : 'Where does the real site listen?')
+    if (!guardDefaultTarget.value) e['options.guard.target'] = g.target ? checkHostPort(g.target) : 'Where does the real site listen?'
     if (g.interval) e['options.guard.interval'] = checkInt(g.interval, 1, 3600)
     if (g.timeout) e['options.guard.timeout'] = checkInt(g.timeout, 1, 60)
     if (g.failures) e['options.guard.failures'] = checkInt(g.failures, 1, 100)

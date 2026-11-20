@@ -22,8 +22,11 @@ type presetParam struct {
 	Kind    string `json:"kind"` // string or number
 	// Required parameters have to be filled in: there is nothing sensible to fall back on.
 	Required bool `json:"required,omitempty"`
-	// Options turns the field into a choice.
+	// Options turns the field into a choice, Labels says how each option reads.
 	Options []string `json:"options,omitempty"`
+	Labels  []string `json:"labels,omitempty"`
+	// Show limits the field to when another answer has one of the listed values.
+	Show map[string][]string `json:"show,omitempty"`
 }
 
 // preset builds a ready to use inbound from a handful of answers.
@@ -72,14 +75,32 @@ var (
 	pPort = func(def string) presetParam {
 		return presetParam{Key: "port", Label: "Port", Default: def, Kind: "number"}
 	}
-	pDomain = presetParam{Key: "sni", Label: "Domain (SNI)", Hint: "Defaults to the node address", Kind: "string"}
-	pCert   = presetParam{Key: "cert", Label: "Certificate path", Hint: "Path on the node", Default: "/certs/fullchain.pem", Kind: "string"}
-	pKey    = presetParam{Key: "key", Label: "Key path", Hint: "Path on the node", Default: "/certs/privkey.pem", Kind: "string"}
-	pEmail  = presetParam{Key: "email", Label: "Email for an automatic certificate", Hint: "Fill this to get a free Let's Encrypt certificate. Needs a real domain pointing at the node, and port 80 free there. The paths above are ignored.", Kind: "string"}
-	pPath   = presetParam{Key: "path", Label: "Path", Hint: "Leave empty for a random one", Kind: "string"}
-	pDest   = presetParam{Key: "dest", Label: "Handshake target", Hint: "Where the server connects to borrow the handshake, as host:port. A real site that speaks TLS 1.3 and h2, or an IP address when you give the server names below.", Default: "www.cloudflare.com:443", Kind: "string"}
-	pNames  = presetParam{Key: "server_names", Label: "Server names (SNI)", Hint: "The names clients send, comma separated. Empty uses the host of the target. Needed when the target is an IP address, such as a site behind a CDN.", Kind: "string"}
+	pDomain     = presetParam{Key: "sni", Label: "Server name (SNI)", Hint: "The name clients ask for. Empty uses the node address.", Kind: "string"}
+	pCertSource = presetParam{
+		Key: "cert_source", Label: "Certificate", Default: certExisting, Kind: "string",
+		Hint:    "An existing one is found in Caddy's or certbot's storage on the node and renewals are picked up on their own.",
+		Options: []string{certExisting, certACME, certFiles, certSelf},
+		Labels:  []string{"Use an existing one (Caddy, certbot)", "Get one from Let's Encrypt", "Files on the node", "Self-signed"},
+	}
+	pCertDomain = presetParam{Key: "cert_domain", Label: "Certificate for", Hint: "The name on the certificate, such as *.example.com. Empty uses the server name.", Kind: "string", Show: map[string][]string{"cert_source": {certExisting, certACME}}}
+	pEmail      = presetParam{Key: "email", Label: "Email", Hint: "Optional. Let's Encrypt writes here before a certificate expires. Needs the name pointing at the node and port 80 free.", Kind: "string", Show: map[string][]string{"cert_source": {certACME}}}
+	pCert       = presetParam{Key: "cert", Label: "Certificate path", Hint: "Path on the node", Kind: "string", Show: map[string][]string{"cert_source": {certFiles}}}
+	pKey        = presetParam{Key: "key", Label: "Key path", Hint: "Path on the node", Kind: "string", Show: map[string][]string{"cert_source": {certFiles}}}
+	pPath       = presetParam{Key: "path", Label: "Path", Hint: "Leave empty for a random one", Kind: "string"}
+	pDest       = presetParam{Key: "dest", Label: "Handshake target", Hint: "Where the server connects to borrow the handshake, as host:port. A real site that speaks TLS 1.3 and h2, or an IP address when you give the server names below.", Default: "www.cloudflare.com:443", Kind: "string"}
+	pNames      = presetParam{Key: "server_names", Label: "Server names (SNI)", Hint: "The names clients send, comma separated. Empty uses the host of the target. Needed when the target is an IP address, such as a site behind a CDN.", Kind: "string"}
 )
+
+// Where a certificate based preset gets its certificate.
+const (
+	certExisting = "existing"
+	certACME     = "acme"
+	certFiles    = "files"
+	certSelf     = "self"
+)
+
+// tlsParams are the questions every certificate based preset asks, after the port.
+var tlsParams = []presetParam{pDomain, pCertSource, pCertDomain, pEmail, pCert, pKey}
 
 // bothCores lists the preset targets that work on xray and sing-box alike.
 var bothCores = []string{"xray", "singbox"}
@@ -93,6 +114,25 @@ var presets = []preset{
 		build: func(p presetValues, req *inboundRequest) error {
 			req.Protocol, req.Port = spec.ProtoMTProto, int32(p.num("port", 443))
 			req.Options = spec.Options{MTMode: "faketls", MTDomain: p.str("domain", "www.cloudflare.com")}
+			return nil
+		},
+	},
+	{
+		ID: "naive-site", Label: "NaiveProxy with a real site", Group: "Other", Cores: []string{"naive"},
+		Description: "A NaiveProxy server that also acts as the front of a real website. Anyone who is not a proxy user, or fails to log in, is sent on to that site.",
+		Params: append(append([]presetParam{pPort("443")}, tlsParams...),
+			presetParam{Key: "site", Label: "Site address", Hint: "Where everyone else is sent, as host:port. Usually your web server.", Default: "127.0.0.1:8443", Kind: "string"},
+			presetParam{Key: "site_tls", Label: "Site uses HTTPS", Default: "true", Kind: "string", Options: []string{"true", "false"}, Labels: []string{"Yes", "No"}},
+			presetParam{Key: "site_proxy", Label: "PROXY protocol to the site", Hint: "Tells the site the visitor's real address, if it accepts the PROXY protocol from this node", Default: "none", Kind: "string", Options: []string{"none", "v1", "v2"}},
+		),
+		build: func(p presetValues, req *inboundRequest) error {
+			req.Protocol, req.Port = spec.ProtoNaive, int32(p.num("port", 443))
+			req.Security = tlsSecurity(p, "h2,http/1.1")
+			proxy := p.str("site_proxy", "none")
+			if proxy == "none" {
+				proxy = ""
+			}
+			req.Options = spec.Options{NaiveDest: p.str("site", "127.0.0.1:8443"), NaiveTLS: p.str("site_tls", "true") == "true", NaiveProxy: proxy}
 			return nil
 		},
 	},
@@ -162,7 +202,7 @@ var presets = []preset{
 	{
 		ID: "vless-grpc-tls", Label: "VLESS + gRPC + TLS", Group: "CDN friendly", Cores: bothCores,
 		Description: "gRPC transport, accepted by most CDNs.",
-		Params:      []presetParam{pPort("443"), pDomain, pCert, pKey, pEmail, {Key: "service", Label: "Service name", Hint: "Leave empty for a random one", Kind: "string"}},
+		Params:      append(append([]presetParam{pPort("443")}, tlsParams...), presetParam{Key: "service", Label: "Service name", Hint: "Leave empty for a random one", Kind: "string"}),
 		build: func(p presetValues, req *inboundRequest) error {
 			req.Protocol, req.Port = spec.ProtoVLESS, int32(p.num("port", 443))
 			req.Transport = spec.Transport{Type: spec.TransportGRPC, ServiceName: p.str("service", randomPath()[1:])}
@@ -174,7 +214,7 @@ var presets = []preset{
 	{
 		ID: "vless-httpupgrade-tls", Label: "VLESS + HTTPUpgrade + TLS", Group: "CDN friendly", Cores: bothCores,
 		Description: "Lighter than WebSocket, same CDN support.",
-		Params:      []presetParam{pPort("443"), pDomain, pCert, pKey, pEmail, pPath},
+		Params:      append(append([]presetParam{pPort("443")}, tlsParams...), pPath),
 		build: func(p presetValues, req *inboundRequest) error {
 			req.Protocol, req.Port = spec.ProtoVLESS, int32(p.num("port", 443))
 			req.Transport = spec.Transport{Type: spec.TransportHTTPUpgrade, Path: pathOrRandom(p)}
@@ -186,7 +226,7 @@ var presets = []preset{
 	{
 		ID: "vless-xhttp-tls", Label: "VLESS + XHTTP + TLS", Group: "CDN friendly", Cores: []string{"xray"},
 		Description: "XHTTP with a real certificate, for CDNs that allow it.",
-		Params:      []presetParam{pPort("443"), pDomain, pCert, pKey, pEmail, pPath},
+		Params:      append(append([]presetParam{pPort("443")}, tlsParams...), pPath),
 		build: func(p presetValues, req *inboundRequest) error {
 			req.Protocol, req.Port = spec.ProtoVLESS, int32(p.num("port", 443))
 			req.Transport = spec.Transport{Type: spec.TransportXHTTP, Path: pathOrRandom(p), Mode: "auto"}
@@ -198,7 +238,7 @@ var presets = []preset{
 	{
 		ID: "hysteria2", Label: "Hysteria2", Group: "UDP / QUIC", Cores: []string{"singbox"},
 		Description: "Fast over lossy links. Needs a UDP port and a certificate.",
-		Params:      []presetParam{pPort("8443"), pDomain, pCert, pKey, pEmail, {Key: "obfs", Label: "Obfuscation password", Hint: "Leave empty to turn salamander off", Kind: "string"}},
+		Params:      append(append([]presetParam{pPort("8443")}, tlsParams...), presetParam{Key: "obfs", Label: "Obfuscation password", Hint: "Leave empty to turn salamander off", Kind: "string"}),
 		build: func(p presetValues, req *inboundRequest) error {
 			req.Protocol, req.Port = spec.ProtoHysteria2, int32(p.num("port", 8443))
 			req.Security = tlsSecurity(p, "h3")
@@ -212,7 +252,7 @@ var presets = []preset{
 	{
 		ID: "tuic", Label: "TUIC v5", Group: "UDP / QUIC", Cores: []string{"singbox"},
 		Description: "QUIC based, low latency.",
-		Params:      []presetParam{pPort("8444"), pDomain, pCert, pKey, pEmail},
+		Params:      append([]presetParam{pPort("8444")}, tlsParams...),
 		build: func(p presetValues, req *inboundRequest) error {
 			req.Protocol, req.Port = spec.ProtoTUIC, int32(p.num("port", 8444))
 			req.Security = tlsSecurity(p, "h3")
@@ -223,7 +263,7 @@ var presets = []preset{
 	{
 		ID: "anytls", Label: "AnyTLS", Group: "Other", Cores: []string{"singbox"},
 		Description: "TLS with traffic shaping against fingerprinting.",
-		Params:      []presetParam{pPort("8445"), pDomain, pCert, pKey, pEmail},
+		Params:      append([]presetParam{pPort("8445")}, tlsParams...),
 		build: func(p presetValues, req *inboundRequest) error {
 			req.Protocol, req.Port = spec.ProtoAnyTLS, int32(p.num("port", 8445))
 			req.Security = tlsSecurity(p, "h2,http/1.1")
@@ -279,7 +319,7 @@ var presets = []preset{
 func wsTLS(id, label, protocol, desc string) preset {
 	return preset{
 		ID: id, Label: label, Group: "CDN friendly", Cores: bothCores, Description: desc,
-		Params: []presetParam{pPort("443"), pDomain, pCert, pKey, pEmail, pPath},
+		Params: append(append([]presetParam{pPort("443")}, tlsParams...), pPath),
 		build: func(p presetValues, req *inboundRequest) error {
 			req.Protocol, req.Port = protocol, int32(p.num("port", 443))
 			req.Transport = spec.Transport{Type: spec.TransportWS, Path: pathOrRandom(p)}
@@ -306,12 +346,15 @@ func randomPath() string {
 
 // tlsSecurity builds the tls block shared by the certificate based presets.
 func tlsSecurity(p presetValues, alpn string) spec.Security {
-	sec := spec.Security{
-		Type: spec.SecurityTLS, SNI: p.str("sni", ""), ALPN: splitComma(alpn),
-		CertPath: p.str("cert", "/certs/fullchain.pem"), KeyPath: p.str("key", "/certs/privkey.pem"),
-	}
-	if email := p.str("email", ""); email != "" {
-		sec.ACME = &spec.ACME{Domain: sec.SNI, Email: email}
+	sec := spec.Security{Type: spec.SecurityTLS, SNI: p.str("sni", ""), ALPN: splitComma(alpn)}
+	domain := p.str("cert_domain", sec.SNI)
+	switch p.str("cert_source", certExisting) {
+	case certExisting:
+		sec.Existing = &spec.Existing{Domain: domain}
+	case certACME:
+		sec.ACME = &spec.ACME{Domain: domain, Email: p.str("email", "")}
+	case certFiles:
+		sec.CertPath, sec.KeyPath = p.str("cert", ""), p.str("key", "")
 	}
 	return sec
 }

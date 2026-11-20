@@ -54,6 +54,11 @@ type Runtime interface {
 	Close() error
 }
 
+// Reloader is a runtime that can pick up new certificate files without dropping its users, which beats a restart.
+type Reloader interface {
+	Reload(ctx context.Context) error
+}
+
 // RealityServer is a runtime whose core serves REALITY inbounds, so it answers probes of REALITY targets.
 type RealityServer interface {
 	ServesReality()
@@ -68,29 +73,33 @@ type Agent struct {
 	applied int64
 	lastErr string
 
-	certs  *certs
-	caddy  *caddyCerts
-	guards *guards
-	last   *link.Spec // the spec as the panel sent it, for applying again
-	waits  []string   // inbounds serving a stand-in until their own certificate files appear
-	sendMu sync.Mutex
-	send   func(typ string, body any) error // the live session's writer, nil while offline
+	certs    *certs
+	existing *existingCerts
+	guards   *guards
+	last     *link.Spec // the spec as the panel sent it, for applying again
+	waits    []string   // inbounds serving a stand-in until their own certificate files appear
+	sendMu   sync.Mutex
+	send     func(typ string, body any) error // the live session's writer, nil while offline
 }
 
 // New creates an agent.
 func New(cfg Config, rt Runtime) *Agent {
 	a := &Agent{cfg: cfg, rt: rt}
-	a.certs = newCerts(filepath.Join(cfg.DataDir, "acme"), cfg.ACMEDirectory, cfg.ACMEHTTPPort, rt.Restart)
+	reload := rt.Restart
+	if r, ok := rt.(Reloader); ok {
+		reload = r.Reload
+	}
+	a.certs = newCerts(filepath.Join(cfg.DataDir, "acme"), cfg.ACMEDirectory, cfg.ACMEHTTPPort, reload)
 	a.certs.report = func([]link.CertStatus) { a.reportCerts() }
-	a.caddy = newCaddyCerts(filepath.Join(cfg.DataDir, "caddy-certs"), rt.Restart)
-	a.caddy.report = a.reportCerts
+	a.existing = newExistingCerts(filepath.Join(cfg.DataDir, "existing-certs"), reload)
+	a.existing.report = a.reportCerts
 	a.guards = newGuards(rt)
 	return a
 }
 
 // certStatuses lists every certificate the agent looks after.
 func (a *Agent) certStatuses() []link.CertStatus {
-	return append(a.certs.Statuses(), a.caddy.Statuses()...)
+	return append(a.certs.Statuses(), a.existing.Statuses()...)
 }
 
 // reportCerts tells the panel how certificates are doing, if a session is open.
@@ -108,7 +117,7 @@ func (a *Agent) localize(d *spec.Daemon) {
 	if filepath.Clean(a.cfg.DataDir) == "/data" {
 		return
 	}
-	acme, caddy := filepath.Join(a.cfg.DataDir, "acme"), filepath.Join(a.cfg.DataDir, "caddy-certs")
+	acme, existing := filepath.Join(a.cfg.DataDir, "acme"), filepath.Join(a.cfg.DataDir, "existing-certs")
 	for i := range d.Inbounds {
 		s := &d.Inbounds[i].Security
 		if s.Type != spec.SecurityTLS {
@@ -116,8 +125,8 @@ func (a *Agent) localize(d *spec.Daemon) {
 		}
 		if s.ACME != nil {
 			s.CertPath, s.KeyPath = s.ACME.Paths(acme)
-		} else if s.Caddy != nil {
-			s.CertPath, s.KeyPath = s.Caddy.Paths(caddy)
+		} else if s.Existing != nil {
+			s.CertPath, s.KeyPath = s.Existing.Paths(existing)
 		}
 	}
 }
@@ -129,7 +138,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	a.resume(ctx)
 	go a.certs.Run(ctx)
-	go a.caddy.Run(ctx)
+	go a.existing.Run(ctx)
 	go a.guards.Run(ctx)
 	go a.watchStandins(ctx)
 
@@ -299,7 +308,7 @@ func (a *Agent) apply(ctx context.Context, sp link.Spec, save bool) error {
 	d.Inbounds = slices.Clone(d.Inbounds)
 	a.localize(&d)
 	a.certs.Want(d)
-	a.caddy.Want(d)
+	a.existing.Want(d)
 	waits := ensureCerts(&d, filepath.Join(a.cfg.DataDir, "standin"))
 	rendered, err := desc.Render(d)
 	if err != nil {

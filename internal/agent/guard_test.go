@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,45 +41,52 @@ func TestProxyHeaderRoundTrip(t *testing.T) {
 	}
 }
 
-func TestFindCaddyCert(t *testing.T) {
-	dir := t.TempDir()
-	put := func(issuer, name, host string) {
-		base := filepath.Join(dir, "certificates", issuer, name)
-		if err := selfSigned(filepath.Join(base, name+".crt"), filepath.Join(base, name+".key"), host); err != nil {
+func TestFindCert(t *testing.T) {
+	caddy, certbot := t.TempDir(), t.TempDir()
+	put := func(cert, key, host string) {
+		if err := selfSigned(cert, key, host); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := findCaddyCert(dir, "vpn.example.com"); err == nil {
+	if _, err := findCert([]string{caddy, certbot}, "vpn.example.com"); err == nil {
 		t.Fatal("found a certificate in empty storage")
 	}
-	put("acme.zerossl.com-v2-dv90", "wildcard_.example.com", "*.example.com")
-	if _, err := findCaddyCert(dir, "vpn.example.com"); err != nil {
+	if _, err := findCert([]string{filepath.Join(caddy, "missing")}, "vpn.example.com"); err == nil || !strings.Contains(err.Error(), "Mount") {
+		t.Fatalf("missing storage not explained: %v", err)
+	}
+
+	base := filepath.Join(caddy, "certificates", "acme.zerossl.com-v2-dv90", "wildcard_.example.com")
+	put(filepath.Join(base, "wildcard_.example.com.crt"), filepath.Join(base, "wildcard_.example.com.key"), "*.example.com")
+	if _, err := findCert([]string{caddy}, "vpn.example.com"); err != nil {
 		t.Fatalf("wildcard of the parent not used: %v", err)
 	}
-	put("acme-v02.api.letsencrypt.org-directory", "vpn.example.com", "vpn.example.com")
-	if _, err := findCaddyCert(dir, "vpn.example.com"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := findCaddyCert(dir, "*.example.com"); err != nil {
+	if _, err := findCert([]string{caddy}, "*.example.com"); err != nil {
 		t.Fatalf("wildcard domain: %v", err)
 	}
-	if _, err := findCaddyCert(dir, "other.org"); err == nil {
+
+	// certbot names the lineage after the first domain, which need not be the one asked for
+	live := filepath.Join(certbot, "live", "example.org-0001")
+	put(filepath.Join(live, "fullchain.pem"), filepath.Join(live, "privkey.pem"), "pass.example.org")
+	if _, err := findCert([]string{caddy, certbot}, "pass.example.org"); err != nil {
+		t.Fatalf("certbot lineage not found: %v", err)
+	}
+	if _, err := findCert([]string{caddy, certbot}, "other.org"); err == nil {
 		t.Fatal("found a certificate for an unrelated domain")
 	}
 }
 
-func TestCaddySyncStandInThenReal(t *testing.T) {
+func TestExistingSyncStandInThenReal(t *testing.T) {
 	storage, copies := t.TempDir(), t.TempDir()
-	c := newCaddyCerts(copies, nil)
-	cd := spec.Caddy{Domain: "vpn.example.com", Dir: storage}
+	c := newExistingCerts(copies, nil)
+	cd := spec.Existing{Domain: "vpn.example.com", Dir: storage}
 	if st := c.sync(cd); !st.Placeholder || st.OK {
 		t.Fatalf("expected a stand-in, got %+v", st)
 	}
-	if _, err := os.Stat(filepath.Join(storage, "certificates")); err == nil {
-		t.Fatal("wrote into Caddy's storage")
+	if entries, _ := os.ReadDir(storage); len(entries) != 0 {
+		t.Fatal("wrote into the other tool's storage")
 	}
-	base := filepath.Join(storage, "certificates", "local", cd.Domain)
-	if err := selfSigned(filepath.Join(base, cd.Domain+".crt"), filepath.Join(base, cd.Domain+".key"), cd.Domain); err != nil {
+	live := filepath.Join(storage, "live", cd.Domain)
+	if err := selfSigned(filepath.Join(live, "fullchain.pem"), filepath.Join(live, "privkey.pem"), cd.Domain); err != nil {
 		t.Fatal(err)
 	}
 	if st := c.sync(cd); !st.OK || st.Placeholder {
@@ -87,6 +95,17 @@ func TestCaddySyncStandInThenReal(t *testing.T) {
 	cert, key := cd.Paths(copies)
 	if _, err := tls.LoadX509KeyPair(cert, key); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEnsureCertsWithoutPaths(t *testing.T) {
+	data := t.TempDir()
+	d := spec.Daemon{Inbounds: []spec.Inbound{{Tag: "hy2", Security: spec.Security{Type: spec.SecurityTLS, SNI: "x.example.com"}}}}
+	if got := ensureCerts(&d, data); len(got) != 0 {
+		t.Fatalf("waiting for files that were never named: %v", got)
+	}
+	if s := d.Inbounds[0].Security; !fileExists(s.CertPath) || !fileExists(s.KeyPath) {
+		t.Fatal("no self signed certificate in place")
 	}
 }
 

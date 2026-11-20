@@ -34,24 +34,26 @@ func (in Inbound) CloakOf() (Cloak, bool) {
 	sec := in.Security
 	var xver int
 	switch {
+	// a handshake target is the real site by definition, so only plain tls takes a target of its own
 	case sec.Type == SecurityReality && sec.Reality != nil:
-		if c.Target == "" {
-			c.Target = sec.Reality.Dest
-		}
+		c.Target = sec.Reality.Dest
 		if c.SNI == "" && len(sec.Reality.ServerNames) > 0 {
 			c.SNI = sec.Reality.ServerNames[0]
 		}
 		xver = sec.Reality.XVer
 	case in.Protocol == ProtoShadowTLS:
-		if c.Target == "" {
-			c.Target = in.Options.Handshake
-		}
+		c.Target = in.Options.Handshake
 	case in.Protocol == ProtoMTProto && in.Options.MTDomain != "":
-		if c.Target == "" {
-			c.Target = net.JoinHostPort(in.Options.MTDomain, "443")
+		// strangers go to the cover site, on 443 unless it names a port
+		host, _, err := net.SplitHostPort(in.Options.MTDomain)
+		if err != nil {
+			host = in.Options.MTDomain
+			c.Target = net.JoinHostPort(host, "443")
+		} else {
+			c.Target = in.Options.MTDomain
 		}
 		if c.SNI == "" {
-			c.SNI = in.Options.MTDomain
+			c.SNI = host
 		}
 	case sec.Type == SecurityTLS && c.SNI == "":
 		switch {
@@ -59,8 +61,9 @@ func (in Inbound) CloakOf() (Cloak, bool) {
 			c.SNI = sec.SNI
 		case sec.ACME != nil:
 			c.SNI = sec.ACME.Domain
-		case sec.Caddy != nil:
-			c.SNI = sec.Caddy.Domain
+		case sec.Existing != nil:
+			// probes skip certificate checks, so any name the wildcard stands for will do
+			c.SNI = strings.TrimPrefix(sec.Existing.Domain, "*.")
 		}
 	}
 	if g.XVer != nil {

@@ -107,6 +107,19 @@ input, select, textarea {
   @apply outline-none
 }
 
+/* Placeholders stay well short of typed text, so an example never passes for a value. */
+input::placeholder,
+textarea::placeholder,
+.input input::placeholder {
+  color: color-mix(in oklab, var(--color-base-content) 32%, transparent);
+  opacity: 1;
+}
+
+/* Fields sitting straight on the page's glow let it through instead of punching solid holes in it. */
+.glass-fields :is(.input, .select) {
+  background-color: color-mix(in oklab, var(--color-base-100) 45%, transparent);
+}
+
 /* Iconify sizes glyphs to 1em tall and lets the width follow the viewBox ratio, so a wide icon
    pushes whatever sits next to it. Square box instead; the glyph letterboxes inside it. */
 .app-icon {

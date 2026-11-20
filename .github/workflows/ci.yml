@@ -18,6 +18,7 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test ./...
+      - run: naive/test.sh
 
   frontend:
     runs-on: ubuntu-latest

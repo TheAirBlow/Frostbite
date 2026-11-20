@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"reflect"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +21,7 @@ import (
 	"github.com/theairblow/turnable/pkg/connection/relay"
 	"github.com/theairblow/turnable/pkg/engine"
 	_ "github.com/theairblow/turnable/pkg/init"
+	"github.com/theairblow/turnable/pkg/version"
 
 	"frostbite/internal/agent/logs"
 	"frostbite/internal/link"
@@ -85,16 +85,7 @@ func New() *Runtime {
 func (r *Runtime) Kind() string { return "turnable" }
 
 // CoreVersion identifies the Turnable build.
-func (r *Runtime) CoreVersion() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, dep := range info.Deps {
-			if dep.Path == "github.com/theairblow/turnable" {
-				return "turnable " + dep.Version
-			}
-		}
-	}
-	return "turnable"
-}
+func (r *Runtime) CoreVersion() string { return "turnable " + version.String() }
 
 func (r *Runtime) logf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)

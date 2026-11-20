@@ -30,9 +30,9 @@
 
     <form v-else id="preset" class="flex flex-col gap-3" novalidate @submit.prevent="create()">
       <div class="grid gap-3 sm:grid-cols-2">
-        <FormField v-for="p in preset.params" :key="p.key" :label="p.label" :hint="p.hint" :name="`params.${p.key}`" :required="p.required">
+        <FormField v-for="p in shown" :key="p.key" :label="p.label" :hint="p.hint" :name="`params.${p.key}`" :required="p.required">
           <select v-if="p.options" v-model="values[p.key]" class="select w-full">
-            <option v-for="o in p.options" :key="o" :value="o">{{ o }}</option>
+            <option v-for="(o, i) in p.options" :key="o" :value="o">{{ $t(p.labels?.[i] ?? o) }}</option>
           </select>
           <input v-else v-model="values[p.key]" :type="p.kind === 'number' ? 'number' : 'text'" class="input w-full" :placeholder="p.default" autocomplete="off">
         </FormField>
@@ -41,9 +41,7 @@
         <button type="button" class="btn btn-sm" :disabled="testing" @click="test()"><Icon name="fa6-solid:vial" size="12" /> {{ $t('Test the handshake target') }}</button>
         <span v-if="testResult" class="text-xs" :class="testResult.ok ? 'text-success' : 'text-error'">{{ testResult.ok ? testResult.output : testResult.error }}</span>
       </div>
-      <p v-if="needsCert" class="text-base-content/60 text-xs">
-        {{ $t('No certificate yet? The daemon makes a self-signed one.') }}
-      </p>
+      <p v-if="certNote" class="text-base-content/60 text-xs">{{ $t(certNote) }}</p>
     </form>
 
     <template v-if="preset" #footer>
@@ -84,7 +82,14 @@ const groups = computed(() => {
 
 const preset = ref<Preset | null>(null)
 const values = ref<Record<string, string>>({})
-const needsCert = computed(() => preset.value?.params.some(p => p.key === 'cert'))
+// a parameter with a show rule only applies while the answer it depends on has one of the listed values
+const shown = computed(() => (preset.value?.params ?? []).filter(p => !p.show || Object.entries(p.show).every(([k, ok]) => ok.includes(values.value[k] ?? ''))))
+const certNote = computed(() => ({
+  existing: 'Until the certificate turns up on the node, the daemon serves a self-signed one and switches within five minutes of it appearing.',
+  acme: 'Until Let\'s Encrypt issues the certificate, the daemon serves a self-signed one.',
+  files: 'Leave both paths empty for a self-signed certificate. Missing files are replaced by one until they appear.',
+  self: 'Clients have to allow insecure certificates to connect.',
+} as Record<string, string>)[values.value.cert_source ?? ''] ?? '')
 
 function choose(p: Preset) {
   preset.value = p
@@ -106,7 +111,9 @@ const answerFor: Record<string, string> = {
   'security.reality.dest': 'params.dest',
   'security.reality.server_names': 'params.server_names',
   'options.mt_domain': 'params.domain',
-  'security.acme.domain': 'params.sni',
+  'security.acme.domain': 'params.cert_domain',
+  'security.acme.email': 'params.email',
+  'security.existing.domain': 'params.cert_domain',
   'security.sni': 'params.sni',
   'security.cert_path': 'params.cert',
   'security.key_path': 'params.key',
@@ -115,7 +122,7 @@ const answerFor: Record<string, string> = {
 
 const formApi = useForm(values, (v) => {
   const e: Record<string, Check> = {}
-  for (const p of preset.value?.params ?? []) {
+  for (const p of shown.value) {
     const val = (v[p.key] ?? '').toString().trim()
     const at = `params.${p.key}`
     if (!val) {
@@ -129,6 +136,8 @@ const formApi = useForm(values, (v) => {
     else if (p.key === 'dest') e[at] = checkHostPort(val)
     else if (p.key === 'server_names') e[at] = checkEach(val.split(/[\s,]+/).filter(Boolean), n => (/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(n) ? undefined : 'Not a valid server name'))
     else if (p.key === 'sni' || p.key === 'domain') e[at] = checkDomain(val)
+    else if (p.key === 'cert_domain') e[at] = checkServerName(val)
+    else if ((p.key === 'cert' || p.key === 'key') && !val.startsWith('/')) e[at] = 'Use an absolute path'
     else if (p.key === 'email') e[at] = checkEmail(val)
     else if (p.key === 'subnet') e[at] = checkCidr(val)
   }
@@ -152,7 +161,7 @@ const { loading: testing, run: test } = useAsyncAction(async () => {
 
 const { loading: saving, run: create } = useAsyncAction(async () => {
   const params: Record<string, unknown> = {}
-  for (const p of preset.value!.params) {
+  for (const p of shown.value) {
     const v = values.value[p.key]
     if (v !== '' && v !== undefined) params[p.key] = p.kind === 'number' ? Number(v) : v
   }

@@ -5,3 +5,5 @@ certs
 .idea
 frontend
 internal/frontend/dist
+naive/.build
+naive/naive-caddy

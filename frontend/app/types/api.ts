@@ -155,7 +155,7 @@ export interface Security {
   ech_config?: string
   reality?: Reality | null
   acme?: { domain: string, email?: string } | null
-  caddy?: { domain: string, dir?: string } | null
+  existing?: { domain: string, dir?: string } | null
 }
 
 export interface Guard {
@@ -333,6 +333,8 @@ export interface PresetParam {
   kind: 'string' | 'number'
   required?: boolean
   options?: string[]
+  labels?: string[]
+  show?: Record<string, string[]>
 }
 
 export interface Preset {

@@ -137,18 +137,35 @@ type Transport struct {
 
 // Security describes the TLS layer. Server-only fields never leave the panel in client output.
 type Security struct {
-	Type        string   `json:"type" ui:"label=Security,options=none|tls|reality"`
-	SNI         string   `json:"sni,omitempty" ui:"label=SNI,show=type:tls"`
-	ALPN        []string `json:"alpn,omitempty" ui:"label=ALPN,advanced"`
-	Fingerprint string   `json:"fingerprint,omitempty" ui:"label=uTLS fingerprint,options=|chrome|firefox|safari|ios|android|edge|random,advanced"`
-	Insecure    bool     `json:"insecure,omitempty" ui:"label=Allow insecure,advanced"`
-	CertPath    string   `json:"cert_path,omitempty" ui:"label=Certificate path,show=type:tls"`
-	KeyPath     string   `json:"key_path,omitempty" ui:"label=Key path,show=type:tls"`
-	ECHKey      string   `json:"ech_key,omitempty" ui:"label=ECH key,show=type:tls,advanced"`
-	ECHConfig   string   `json:"ech_config,omitempty" ui:"label=ECH config,show=type:tls,advanced"`
-	Reality     *Reality `json:"reality,omitempty"`
-	ACME        *ACME    `json:"acme,omitempty"`
-	Caddy       *Caddy   `json:"caddy,omitempty"`
+	Type        string    `json:"type" ui:"label=Security,options=none|tls|reality"`
+	SNI         string    `json:"sni,omitempty" ui:"label=SNI,hint=The name clients ask for. Empty uses the address they connect to.,show=type:tls"`
+	ALPN        []string  `json:"alpn,omitempty" ui:"label=ALPN,advanced"`
+	Fingerprint string    `json:"fingerprint,omitempty" ui:"label=uTLS fingerprint,options=|chrome|firefox|safari|ios|android|edge|random,advanced"`
+	Insecure    bool      `json:"insecure,omitempty" ui:"label=Allow insecure,advanced"`
+	CertPath    string    `json:"cert_path,omitempty" ui:"label=Certificate path,hint=Path on the node,show=type:tls"`
+	KeyPath     string    `json:"key_path,omitempty" ui:"label=Key path,hint=Path on the node,show=type:tls"`
+	ECHKey      string    `json:"ech_key,omitempty" ui:"label=ECH key,show=type:tls,advanced"`
+	ECHConfig   string    `json:"ech_config,omitempty" ui:"label=ECH config,show=type:tls,advanced"`
+	Reality     *Reality  `json:"reality,omitempty"`
+	ACME        *ACME     `json:"acme,omitempty"`
+	Existing    *Existing `json:"existing,omitempty"`
+}
+
+// UnmarshalJSON also accepts the older "caddy" key for an existing certificate.
+func (s *Security) UnmarshalJSON(b []byte) error {
+	type plain Security
+	var v struct {
+		plain
+		Caddy *Existing `json:"caddy,omitempty"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*s = Security(v.plain)
+	if s.Existing == nil {
+		s.Existing = v.Caddy
+	}
+	return nil
 }
 
 // ACMEDir is where daemons keep certificates they obtained. An agent with another data directory maps it.
@@ -165,29 +182,26 @@ func (a ACME) Paths(dir string) (cert, key string) {
 	return dir + "/" + a.Domain + "/fullchain.pem", dir + "/" + a.Domain + "/privkey.pem"
 }
 
-// CaddyDir is where daemons look for Caddy's data folder when the inbound does not say.
-const CaddyDir = "/caddy"
+// ExistingDirs are where daemons search for certificates another tool keeps when the inbound names no folder:
+// Caddy's data folder and certbot's config folder, as mounted into the container or on a native install.
+var ExistingDirs = []string{"/caddy", "/letsencrypt", "/etc/letsencrypt", "/var/lib/caddy/.local/share/caddy"}
 
-// Caddy reuses the certificate a Caddy server on the same node keeps for a domain.
-type Caddy struct {
-	Domain string `json:"domain"`
-	Dir    string `json:"dir,omitempty"` // Caddy's data folder as the daemon sees it, the one holding certificates/
+// Existing reuses a certificate another tool on the node already keeps, such as Caddy or certbot.
+type Existing struct {
+	Domain string `json:"domain"`        // the name on the certificate, *.example.com for a wildcard
+	Dir    string `json:"dir,omitempty"` // a folder to search instead of ExistingDirs
 }
 
-// CaddyCopyDir is where daemons keep their own copy of Caddy's certificates, so the core reads a stable path.
-const CaddyCopyDir = "/data/caddy-certs"
-
-// StorageName is the folder name Caddy gives a domain, which turns a leading *. into wildcard_.
-func (c Caddy) StorageName() string {
-	if rest, ok := strings.CutPrefix(c.Domain, "*."); ok {
-		return "wildcard_." + rest
-	}
-	return c.Domain
-}
+// ExistingCopyDir is where daemons keep their own copy of an existing certificate, so the core reads a stable path.
+const ExistingCopyDir = "/data/existing-certs"
 
 // Paths returns where the daemon's copy of the certificate and key live under dir.
-func (c Caddy) Paths(dir string) (cert, key string) {
-	return dir + "/" + c.StorageName() + "/fullchain.pem", dir + "/" + c.StorageName() + "/privkey.pem"
+func (e Existing) Paths(dir string) (cert, key string) {
+	name := e.Domain
+	if rest, ok := strings.CutPrefix(name, "*."); ok {
+		name = "wildcard_." + rest
+	}
+	return dir + "/" + name + "/fullchain.pem", dir + "/" + name + "/privkey.pem"
 }
 
 // Reality holds REALITY handshake settings.
@@ -236,6 +250,12 @@ type Options struct {
 	TPeers      int                 `json:"t_peers,omitempty" ui:"label=Connections per user,show=protocol:turnable,advanced"`
 	TPrivate    string              `json:"t_private,omitempty" ui:"label=Server private key,show=protocol:turnable,advanced"`
 	TPublic     string              `json:"t_public,omitempty" ui:"label=Server public key,show=protocol:turnable,advanced"`
+	NaiveDest   string              `json:"naive_dest,omitempty" ui:"label=Site address,hint=Where visitors and failed logins are sent, as host:port. Usually your web server.,show=protocol:naive"`
+	NaiveTLS    bool                `json:"naive_dest_tls,omitempty" ui:"label=Site uses HTTPS,show=protocol:naive"`
+	NaiveSNI    string              `json:"naive_dest_sni,omitempty" ui:"label=Site server name,hint=Sent to the site over HTTPS. Empty uses the name the visitor asked for.,show=protocol:naive,advanced"`
+	NaiveSkip   bool                `json:"naive_dest_insecure,omitempty" ui:"label=Skip site certificate check,show=protocol:naive,advanced"`
+	NaiveProxy  string              `json:"naive_dest_proxy,omitempty" ui:"label=PROXY protocol to the site,hint=Tells the site the visitor's real address,options=|v1|v2,show=protocol:naive"`
+	NaiveHeader string              `json:"naive_ip_header,omitempty" ui:"label=Client IP header,hint=Header that carries the visitor's address to the site. Empty means X-Forwarded-For and none means no header.,show=protocol:naive"`
 	WGAddress   string              `json:"wg_address,omitempty"` // a user's own tunnel address, filled in for client profiles
 	Auth        bool                `json:"auth,omitempty" ui:"label=Require auth,show=protocol:socks|http|mixed"`
 	UDP         bool                `json:"udp,omitempty" ui:"label=Allow UDP,show=protocol:socks|mixed,advanced"`

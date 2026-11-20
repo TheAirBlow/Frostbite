@@ -11,7 +11,7 @@ import (
 )
 
 func TestGuardHaltsInProcessCoreAndHandsPortBack(t *testing.T) {
-	target, _ := tlsSite(t, false)
+	site, _ := tlsSite(t, false)
 	free, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func TestGuardHaltsInProcessCoreAndHandsPortBack(t *testing.T) {
 
 	d := spec.Daemon{Kind: "mtproto", Inbounds: []spec.Inbound{{
 		Tag: "mt", Protocol: spec.ProtoMTProto, Listen: "127.0.0.1", Port: port, Transport: spec.Transport{Type: "tcp"},
-		Options: spec.Options{MTMode: "faketls", MTDomain: "site.example.com", Guard: &spec.Guard{Enabled: true, Target: target}},
+		Options: spec.Options{MTMode: "faketls", MTDomain: site, Guard: &spec.Guard{Enabled: true}},
 	}}}
 	rt := mtproto.New()
 	g := newGuards(rt)

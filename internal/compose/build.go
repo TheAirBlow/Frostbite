@@ -70,13 +70,13 @@ func (s *Snapshot) inbound(in db.Inbound, extra []spec.User) spec.Inbound {
 	}
 	if a := out.Security.ACME; a != nil && out.Security.Type == spec.SecurityTLS {
 		out.Security.CertPath, out.Security.KeyPath = a.Paths(spec.ACMEDir)
-	} else if c := out.Security.Caddy; c != nil && out.Security.Type == spec.SecurityTLS {
-		out.Security.CertPath, out.Security.KeyPath = c.Paths(spec.CaddyCopyDir)
+	} else if e := out.Security.Existing; e != nil && out.Security.Type == spec.SecurityTLS {
+		out.Security.CertPath, out.Security.KeyPath = e.Paths(spec.ExistingCopyDir)
 	}
 	if in.EdgeDaemonID != nil {
 		// the edge owns the public port, so the inbound moves to a private one behind it
 		out.Listen, out.Port = "127.0.0.1", InternalPort(in.ID)
-		out.Options.AcceptProxy = s.Daemons[in.DaemonID].Kind == "xray"
+		out.Options.AcceptProxy = readsProxy(s.Daemons[in.DaemonID].Kind)
 	}
 	if in.Protocol == spec.ProtoForward {
 		return out
@@ -267,6 +267,9 @@ func warpOf(a warp.Account) *spec.Warp {
 	return &spec.Warp{PrivateKey: a.PrivateKey, PeerKey: a.PeerKey, Addresses: addrs, Endpoint: a.Endpoint, Reserved: a.Reserved}
 }
 
+// readsProxy reports whether a daemon kind can read the PROXY header an edge sends in front of a connection.
+func readsProxy(kind string) bool { return kind == "xray" || kind == "naive" }
+
 // InternalPort is the loopback port an inbound listens on while an edge daemon fronts it.
 func InternalPort(inboundID int64) int { return 30000 + int(inboundID%30000) }
 
@@ -281,8 +284,8 @@ func edgeNames(in db.Inbound) []string {
 		return sec.Reality.ServerNames
 	case sec.ACME != nil && sec.ACME.Domain != "":
 		return []string{sec.ACME.Domain}
-	case sec.Caddy != nil && sec.Caddy.Domain != "":
-		return []string{sec.Caddy.Domain}
+	case sec.Existing != nil && sec.Existing.Domain != "":
+		return []string{sec.Existing.Domain}
 	case sec.SNI != "":
 		return []string{sec.SNI}
 	}
@@ -308,7 +311,7 @@ func (s *Snapshot) buildEdge(d db.Daemon) (spec.Daemon, error) {
 		}
 		e.Routes = append(e.Routes, spec.EdgeRoute{
 			Name: in.Tag, SNI: names, Target: fmt.Sprintf("127.0.0.1:%d", InternalPort(in.ID)),
-			Proxy: s.Daemons[in.DaemonID].Kind == "xray",
+			Proxy: readsProxy(s.Daemons[in.DaemonID].Kind),
 		})
 	}
 	return spec.Daemon{Kind: d.Kind, Edge: e, RawPatch: d.RawPatch}, nil
