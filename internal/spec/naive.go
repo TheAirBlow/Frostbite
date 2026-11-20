@@ -26,7 +26,7 @@ func (o Options) NaiveIPHeader() string {
 	return o.NaiveHeader
 }
 
-// validateNaive checks the settings of an inbound served by the naive daemon, which sends visitors that are no
+// validateNaive checks the settings of an inbound served by the Caddy daemon, which sends visitors that are no
 // proxy users on to a real site.
 func (o Options) validateNaive() error {
 	host, port, err := net.SplitHostPort(o.NaiveDest)

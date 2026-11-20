@@ -4,7 +4,7 @@ import "testing"
 
 func TestNaiveValidation(t *testing.T) {
 	base := func(o Options) Daemon {
-		return Daemon{Kind: "naive", Inbounds: []Inbound{{Tag: "n", Protocol: ProtoNaive, Port: 443, Security: Security{Type: SecurityTLS}, Options: o}}}
+		return Daemon{Kind: "caddy", Inbounds: []Inbound{{Tag: "n", Protocol: ProtoNaive, Port: 443, Security: Security{Type: SecurityTLS}, Options: o}}}
 	}
 	cases := []struct {
 		name string
@@ -27,7 +27,7 @@ func TestNaiveValidation(t *testing.T) {
 		}
 	}
 
-	// sing-box serves naive without a site, so only the naive daemon asks for one
+	// sing-box serves naive without a site, so only the Caddy daemon asks for one
 	d := base(Options{})
 	d.Kind = "singbox"
 	if err := d.Validate(); err != nil {

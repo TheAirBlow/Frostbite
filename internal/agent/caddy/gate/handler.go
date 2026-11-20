@@ -1,4 +1,4 @@
-// Package gate is the Caddy side of the Frostbite naive daemon. It authenticates proxy clients against a user table the
+// Package gate is the Caddy side of the Frostbite caddy daemon. It authenticates proxy clients against a user table the
 // agent keeps current over the admin api, counts their traffic and can cut them off, and hands everything else on to the
 // next handler, which serves the real site.
 package gate

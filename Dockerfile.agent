@@ -25,16 +25,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent .
 FROM build AS build-turnable
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-turnable
 
-# Caddy with the NaiveProxy fork of forwardproxy and the Frostbite gate, see naive/
-FROM golang:1.26 AS build-caddy
-WORKDIR /src/naive
-COPY naive/go.mod naive/go.sum ./
-RUN go mod download
-COPY naive/ ./
-RUN ./build.sh /out/naive-caddy
-
-FROM build AS build-naive
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-naive
+FROM build AS build-caddy
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-caddy
 
 FROM alpine:3.22 AS fetch-xray
 ARG XRAY_VERSION=v26.3.27
@@ -72,7 +64,6 @@ FROM base AS turnable
 COPY --from=build-turnable /out/agent /usr/local/bin/agent
 ENTRYPOINT ["agent"]
 
-FROM base AS naive
-COPY --from=build-caddy /out/naive-caddy /usr/local/bin/naive-caddy
-COPY --from=build-naive /out/agent /usr/local/bin/agent
+FROM base AS caddy
+COPY --from=build-caddy /out/agent /usr/local/bin/agent
 ENTRYPOINT ["agent"]

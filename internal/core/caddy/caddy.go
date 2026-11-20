@@ -1,6 +1,6 @@
-// Package naive renders the config of the naive daemon: Caddy with the NaiveProxy fork of forwardproxy, where every
+// Package caddy renders the config of the Caddy daemon: Caddy with the NaiveProxy fork of forwardproxy, where every
 // visitor that is no proxy user is sent on to a real site.
-package naive
+package caddy
 
 import (
 	"encoding/json"
@@ -16,8 +16,8 @@ import (
 
 func init() {
 	core.Register(core.Descriptor{
-		Kind:        "naive",
-		DisplayName: "Naive",
+		Kind:        "caddy",
+		DisplayName: "Caddy",
 		Caps: core.Capabilities{
 			Protocols:  []string{spec.ProtoNaive},
 			Transports: []string{spec.TransportTCP},
@@ -29,7 +29,7 @@ func init() {
 	})
 }
 
-// GateModule is the handler that checks proxy users, see naive/gate.
+// GateModule is the handler that checks proxy users, see internal/agent/caddy/gate.
 const GateModule = "frostbite_gate"
 
 // Render builds the Caddy config for d. Users are not part of it: they live in the running process, so adding and
@@ -58,8 +58,10 @@ func Render(d spec.Daemon) ([]byte, error) {
 		apps["tls"] = map[string]any{"certificates": map[string]any{"load_files": certs}}
 	}
 	cfg := map[string]any{
+		// the agent drives Caddy in its own process, so the admin api would only be a way in
+		"admin": map[string]any{"disabled": true},
 		"logging": map[string]any{"logs": map[string]any{"default": map[string]any{
-			"level": logLevel(d.Log.Level), "encoder": map[string]any{"format": "console"},
+			"level": logLevel(d.Log.Level), "encoder": map[string]any{"format": "console"}, "writer": map[string]any{"output": "frostbite"},
 		}}},
 		"apps": apps,
 	}

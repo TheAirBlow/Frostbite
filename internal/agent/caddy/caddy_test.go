@@ -1,4 +1,4 @@
-package naive
+package caddy
 
 import (
 	"bufio"
@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,18 +28,11 @@ import (
 	"testing"
 	"time"
 
-	corenaive "frostbite/internal/core/naive"
+	"golang.org/x/net/http2"
+
+	corecaddy "frostbite/internal/core/caddy"
 	"frostbite/internal/spec"
 )
-
-// bin is the Caddy build to test against, made by naive/test.sh. The tests are skipped without it.
-func bin(t *testing.T) string {
-	b := os.Getenv("FROSTBITE_NAIVE_BIN")
-	if b == "" {
-		t.Skip("FROSTBITE_NAIVE_BIN is not set, run naive/test.sh")
-	}
-	return b
-}
 
 func writeCert(t *testing.T, dir string) (cert, key string) {
 	t.Helper()
@@ -120,7 +114,7 @@ func newFixture(t *testing.T, tune func(*spec.Inbound)) *fixture {
 	t.Helper()
 	dir := t.TempDir()
 	cert, key := writeCert(t, dir)
-	f := &fixture{rt: New(bin(t), dir), echo: echoServer(t)}
+	f := &fixture{rt: New(), echo: echoServer(t)}
 	t.Cleanup(func() { f.rt.Close() })
 
 	f.addr = fmt.Sprintf("127.0.0.1:%d", freePort(t))
@@ -136,7 +130,7 @@ func newFixture(t *testing.T, tune func(*spec.Inbound)) *fixture {
 		tune(&in)
 	}
 	f.d = spec.Daemon{
-		Kind: "naive", Inbounds: []spec.Inbound{in}, Outbounds: []spec.Outbound{{Tag: "direct", Kind: spec.OutDirect}}, Final: "direct",
+		Kind: "caddy", Inbounds: []spec.Inbound{in}, Outbounds: []spec.Outbound{{Tag: "direct", Kind: spec.OutDirect}}, Final: "direct",
 		// the echo server is on loopback, which forwardproxy refuses unless a rule says otherwise
 		Rules: []spec.Rule{{IPCIDR: []string{"127.0.0.1/32"}, Outbound: "direct"}},
 	}
@@ -149,7 +143,7 @@ func (f *fixture) apply(t *testing.T) {
 	if err := f.d.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	rendered, err := corenaive.Render(f.d)
+	rendered, err := corecaddy.Render(f.d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,5 +403,77 @@ func TestRealAddressFromTheEdgeAndToTheSite(t *testing.T) {
 	}
 	if a := <-got; a != "xff=203.0.113.7" {
 		t.Errorf("the site read %q", a)
+	}
+}
+
+// tunnelH2 opens a CONNECT over HTTP/2, the way NaiveProxy does.
+func (f *fixture) tunnelH2(t *testing.T, name, pass string) (*io.PipeWriter, io.ReadCloser) {
+	t.Helper()
+	tr := &http2.Transport{DialTLSContext: func(ctx context.Context, n, a string, _ *tls.Config) (net.Conn, error) {
+		return tls.Dial(n, a, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"h2"}})
+	}}
+	pr, pw := io.Pipe()
+	req := &http.Request{Method: http.MethodConnect, URL: &url.URL{Scheme: "https", Host: f.addr}, Host: f.echo, Body: pr, Header: http.Header{"Proxy-Authorization": {basic(name, pass)}}}
+	resp, err := tr.RoundTrip(req)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("h2 connect as %s: %v %v", name, resp, err)
+	}
+	return pw, resp.Body
+}
+
+func echoH2(w io.Writer, r io.Reader, msg string) error {
+	if _, err := io.WriteString(w, msg); err != nil {
+		return err
+	}
+	got := make([]byte, len(msg))
+	if _, err := io.ReadFull(r, got); err != nil {
+		return err
+	}
+	if string(got) != msg {
+		return fmt.Errorf("got %q", got)
+	}
+	return nil
+}
+
+func TestH2UsersAndKick(t *testing.T) {
+	s := newSite(t)
+	f := newFixture(t, func(in *spec.Inbound) { in.Options.NaiveDest = strings.TrimPrefix(s.URL, "http://") })
+	w1, r1 := f.tunnelH2(t, "u1", "pw1")
+	if err := echoH2(w1, r1, "hello"); err != nil {
+		t.Fatal(err)
+	}
+
+	f.setUsers(t, spec.User{Name: "u1", Password: "pw1"}, spec.User{Name: "u2", Password: "pw2"})
+	if err := echoH2(w1, r1, "still"); err != nil {
+		t.Fatalf("adding a user dropped u1: %v", err)
+	}
+	w2, r2 := f.tunnelH2(t, "u2", "pw2")
+	if err := echoH2(w2, r2, "new"); err != nil {
+		t.Fatal(err)
+	}
+
+	f.setUsers(t, spec.User{Name: "u2", Password: "pw2"})
+	done := make(chan error, 1)
+	go func() {
+		for {
+			if err := echoH2(w1, r1, "x"); err != nil {
+				done <- err
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("u1 stayed connected after being deleted")
+	}
+	if err := echoH2(w2, r2, "fine"); err != nil {
+		t.Errorf("deleting u1 dropped u2: %v", err)
+	}
+
+	st, _ := f.rt.Stats(context.Background())
+	if st.Users["u1"].Up == 0 || st.Users["u2"].Down == 0 {
+		t.Errorf("usage %v", st.Users)
 	}
 }
