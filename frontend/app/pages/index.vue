@@ -96,7 +96,6 @@
 </template>
 
 <script setup lang="ts">
-import { CurveType } from 'vue-chrts'
 import type { Dashboard, Daemon, Inbound, PanelNode, Squad } from '~/types/api'
 
 useHead({ title: 'Dashboard' })

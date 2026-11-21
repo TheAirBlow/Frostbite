@@ -1,4 +1,12 @@
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
+
+const requireFrom = (...chain: string[]) =>
+  chain.reduce((req, pkg) => createRequire(req.resolve(`${pkg}/package.json`)), createRequire(import.meta.url))
+
+// the crossws copy nitro's h3 hooks are written for, not whichever release happens to be hoisted
+const h3Require = requireFrom('nitropack', 'h3')
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -50,7 +58,16 @@ export default defineNuxtConfig({
     },
   },
 
+  // nuxt dev keeps nitro's own dev server
+  $production: {
+    nitro: {
+      preset: 'bun',
+      entry: fileURLToPath(new URL('./server/entry.bun.ts', import.meta.url)),
+    },
+  },
+
   nitro: {
+    alias: { '#crossws-bun': h3Require.resolve('crossws/adapters/bun') },
     compressPublicAssets: true,
     // daemons keep a websocket open at /api/link, see server/routes/api/link.ts
     experimental: { websocket: true },

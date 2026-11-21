@@ -32,7 +32,6 @@
 </template>
 
 <script setup lang="ts">
-import { CurveType } from 'vue-chrts'
 import type { PanelNode, PanelUser, TrafficPoint } from '~/types/api'
 
 const props = defineProps<{ user: PanelUser }>()

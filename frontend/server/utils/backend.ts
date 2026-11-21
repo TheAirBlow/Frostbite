@@ -13,7 +13,11 @@ export function forwardedIp(value: string | null | undefined) {
 }
 
 export function clientIp(event: H3Event) {
-  return forwardedIp(getRequestHeader(event, ipHeader)) || event.node.req.socket.remoteAddress || undefined
+  const bun = event.context.bun as { server: Bun.Server<unknown>, request: Request } | undefined
+  return forwardedIp(getRequestHeader(event, ipHeader))
+    || bun?.server.requestIP(bun.request)?.address
+    || event.node.req.socket.remoteAddress
+    || undefined
 }
 
 export function backendBase(event?: H3Event) {

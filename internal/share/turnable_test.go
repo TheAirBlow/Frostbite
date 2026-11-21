@@ -70,8 +70,8 @@ func TestTurnableLinkCarriesEveryRoute(t *testing.T) {
 		Options: spec.Options{
 			TCallID: "abc123", TPrivate: pair.Private, TPublic: pair.Public,
 			TRoutes: []spec.TurnableRouteSpec{
-				{ID: "wg", Name: "WireGuard", Target: "127.0.0.1:51820", Socket: "udp"},
-				{ID: "web", Name: "Web", Target: "127.0.0.1:8443", Socket: "tcp"},
+				{ID: "wg", Name: "WireGuard", Target: "127.0.0.1:51820", Socket: "udp", LocalPort: 10799},
+				{ID: "web", Name: "Web", Target: "127.0.0.1:8443", Socket: "tcp", Kind: spec.RouteCustom, LocalPort: 10801},
 			},
 		}.TurnableDefaults(),
 	}
@@ -93,5 +93,9 @@ func TestTurnableLinkCarriesEveryRoute(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
+	}
+	// only routes other apps are pointed at suggest a port, so the external one stays unset
+	if cfg.SuggestedPort(0) != 0 || cfg.SuggestedPort(1) != 10801 {
+		t.Fatalf("the link suggests ports %q", cfg.Ports)
 	}
 }

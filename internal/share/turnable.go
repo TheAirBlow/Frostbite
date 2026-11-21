@@ -35,7 +35,11 @@ func turnableLink(u spec.Upstream) (string, error) {
 		if name == "" {
 			name = u.Name
 		}
-		routes = append(routes, &providers.Route{ID: r.ID, Address: host, Port: port, Socket: r.Socket, Transport: r.Transport, Encryption: r.Encryption, Name: name})
+		route := &providers.Route{ID: r.ID, Address: host, Port: port, Socket: r.Socket, Transport: r.Transport, Encryption: r.Encryption, Name: name}
+		if r.IsLocal() {
+			route.LocalPort = r.LocalPort
+		}
+		routes = append(routes, route)
 		allowed = append(allowed, r.ID)
 	}
 	user := &providers.User{UUID: u.UUID, AllowedRoutes: allowed, Type: "relay", Peers: o.TPeers}
