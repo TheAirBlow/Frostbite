@@ -17,7 +17,7 @@ var RemarkPlaceholders = []string{
 }
 
 // RouteNamePlaceholders can be used in the name of a Turnable destination.
-var RouteNamePlaceholders = append(slices.Clone(RemarkPlaceholders), "remark", "route")
+var RouteNamePlaceholders = append(slices.Clone(RemarkPlaceholders), "remark", "inbound_remark", "route")
 
 // RouteURLVars can be used in the custom link of a Turnable destination.
 var RouteURLVars = append(slices.Clone(RouteNamePlaceholders), "uuid", "password", "name")

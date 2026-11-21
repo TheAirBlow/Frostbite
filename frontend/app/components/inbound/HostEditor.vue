@@ -3,7 +3,6 @@
     <p class="text-base-content/60 text-sm">
       {{ $t('One host per entry point. Each becomes its own profile.') }}
     </p>
-    <PlaceholderHelp :names="remarkPlaceholders" title="Remark placeholders" />
 
     <div v-for="h in hosts" :key="h.id" class="surface p-3">
       <div class="flex items-center gap-2">
@@ -17,6 +16,7 @@
 
       <form v-if="editing === h.id" class="mt-3 flex flex-col gap-3" novalidate @submit.prevent="save(h)">
         <FormField label="Remark" name="remark"><input v-model="draft.remark" class="input w-full" placeholder="{node} {protocol}"></FormField>
+        <PlaceholderHelp class="-mt-1" :names="remarkPlaceholders" title="Remark placeholders" :insert="tok => draft.remark = appendPlaceholder(draft.remark, tok)" />
         <div class="grid gap-3 sm:grid-cols-3">
           <FormField class="sm:col-span-2" label="Address" name="address" :hint="h.bridge_inbound_id ? 'Kept in sync with the relay.' : 'Empty uses the node address.'"><input v-model="draft.address" class="input w-full font-mono" :placeholder="nodeAddress" :readonly="!!h.bridge_inbound_id"></FormField>
           <FormField label="Port" name="port" hint="Empty uses the inbound port."><input v-model.number="draft.port" type="number" class="input w-full" :placeholder="String(inbound.port)" :readonly="!!h.bridge_inbound_id"></FormField>

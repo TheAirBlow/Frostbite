@@ -112,7 +112,7 @@ func (t *Topology) Profiles(u db.User, squadIDs []int64, mode ProfileMode) []Pro
 				up.Inner = &inner
 			}
 			if isTurnable {
-				up.Options.TRoutes = namedRoutes(si, ep, user)
+				up.Options.TRoutes = t.namedRoutes(si, ep, user)
 			}
 			p := Profile{
 				Upstream: up, NodeID: node.ID, NodeName: node.Name, InboundID: id, HostID: h.ID, Country: node.Country,
@@ -188,7 +188,7 @@ func (t *Topology) localProfiles(in db.Inbound, si spec.Inbound, node db.Node, u
 	ep := share.Endpoint{Inbound: si, Host: hostFor(t.Hosts[in.ID]), NodeAddress: node.Address, NodeName: node.Name, Country: node.Country, Username: u.Username}
 	user := UserFor(si, u)
 	var out []Profile
-	for _, r := range namedRoutes(si, ep, user) {
+	for _, r := range t.namedRoutes(si, ep, user) {
 		if !r.IsLocal() {
 			continue
 		}
@@ -200,7 +200,7 @@ func (t *Topology) localProfiles(in db.Inbound, si spec.Inbound, node db.Node, u
 		case spec.RouteInbound:
 			up, ok = t.localInbound(r, node, u, allowed)
 		case spec.RouteCustom:
-			up, ok = localCustom(r, routePlaceholders(ep, user, r), user)
+			up, ok = localCustom(r, t.routePlaceholders(ep, user, r), user)
 		}
 		if ok {
 			out = append(out, Profile{Upstream: up, NodeID: node.ID, NodeName: node.Name, InboundID: in.ID, Country: node.Country, Via: "turnable-local"})
@@ -257,14 +257,14 @@ func localCustom(r spec.TurnableRouteSpec, vars spec.Placeholders, cred spec.Use
 
 // namedRoutes lists the destinations of a Turnable inbound with their name templates filled in, as seen through
 // one of its hosts.
-func namedRoutes(si spec.Inbound, ep share.Endpoint, user spec.User) []spec.TurnableRouteSpec {
+func (t *Topology) namedRoutes(si spec.Inbound, ep share.Endpoint, user spec.User) []spec.TurnableRouteSpec {
 	routes := si.Options.TurnableRoutes()
 	for i, r := range routes {
 		tpl := r.Name
 		if tpl == "" {
 			tpl = DefaultRouteName
 		}
-		routes[i].Name = routePlaceholders(ep, user, r).Expand(tpl)
+		routes[i].Name = t.routePlaceholders(ep, user, r).Expand(tpl)
 	}
 	return routes
 }
@@ -273,9 +273,15 @@ func namedRoutes(si spec.Inbound, ep share.Endpoint, user spec.User) []spec.Turn
 const DefaultRouteName = "{remark}"
 
 // routePlaceholders are the values the name and link of a destination can refer to. See spec.RouteNamePlaceholders.
-func routePlaceholders(ep share.Endpoint, user spec.User, r spec.TurnableRouteSpec) spec.Placeholders {
+func (t *Topology) routePlaceholders(ep share.Endpoint, user spec.User, r spec.TurnableRouteSpec) spec.Placeholders {
 	p := share.Placeholders(ep, user)
 	p["remark"] = share.Remark(ep, user)
+	p["inbound_remark"] = p["remark"]
+	if target, ok := t.Inbounds[r.InboundID]; ok && r.Kind == spec.RouteInbound {
+		tep := ep
+		tep.Inbound, tep.Host = specInbound(target), hostFor(t.Hosts[target.ID])
+		p["inbound_remark"] = share.Remark(tep, user)
+	}
 	p["route"] = r.ID
 	return p
 }

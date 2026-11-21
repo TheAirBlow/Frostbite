@@ -79,6 +79,7 @@ func TestTurnableLinkCarriesEveryRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	up.Name = "Frankfurt | alice"
 	link, err := Link(up)
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +89,9 @@ func TestTurnableLinkCarriesEveryRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := parsed.(*relay.ClientConfig)
+	if cfg.Name != up.Name {
+		t.Fatalf("the link is named %q, not after the host", cfg.Name)
+	}
 	if len(cfg.Routes) != 2 || cfg.Routes[0].RouteID != "wg" || cfg.Routes[1].RouteID != "web" || cfg.Routes[1].Socket != "tcp" {
 		t.Fatalf("routes lost on the way: %+v", cfg.Routes)
 	}

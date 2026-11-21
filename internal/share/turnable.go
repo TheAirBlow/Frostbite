@@ -31,11 +31,7 @@ func turnableLink(u spec.Upstream) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("turnable: route %s: %w", r.ID, err)
 		}
-		name := r.Name
-		if name == "" {
-			name = u.Name
-		}
-		route := &providers.Route{ID: r.ID, Address: host, Port: port, Socket: r.Socket, Transport: r.Transport, Encryption: r.Encryption, Name: name}
+		route := &providers.Route{ID: r.ID, Address: host, Port: port, Socket: r.Socket, Transport: r.Transport, Encryption: r.Encryption, Name: r.Name}
 		if r.IsLocal() {
 			route.LocalPort = r.LocalPort
 		}
@@ -47,6 +43,10 @@ func turnableLink(u spec.Upstream) (string, error) {
 	cfg, err := (&relay.Handler{}).GetClientConfig(server, user, routes)
 	if err != nil {
 		return "", fmt.Errorf("turnable: %w", err)
+	}
+	// One link carries every route, so it is named after the host rather than the route names Turnable joins.
+	if c, ok := cfg.(*relay.ClientConfig); ok && u.Name != "" {
+		c.Name = u.Name
 	}
 	return cfg.ToURL()
 }

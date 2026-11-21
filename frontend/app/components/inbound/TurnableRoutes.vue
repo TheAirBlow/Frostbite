@@ -81,7 +81,7 @@
             </select>
           </FormField>
         </div>
-        <PlaceholderHelp :names="routeNamePlaceholders" title="Name placeholders" />
+        <PlaceholderHelp :names="routeNamePlaceholders" title="Name placeholders" :insert="tok => r.name = appendPlaceholder(r.name, tok)" />
       </Advanced>
     </article>
   </section>

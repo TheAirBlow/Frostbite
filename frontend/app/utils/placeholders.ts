@@ -13,6 +13,7 @@ export const placeholderHints: Record<string, string> = {
   host: 'Address the app connects to',
   port: 'Port the app connects to',
   remark: 'Remark of the tunnel\'s host',
+  inbound_remark: 'Remark of the inbound the destination leads to, or {remark} for other destinations',
   route: 'Destination id',
   uuid: 'The user\'s UUID',
   password: 'The user\'s password',
@@ -20,8 +21,23 @@ export const placeholderHints: Record<string, string> = {
 }
 
 export const remarkPlaceholders = ['node', 'country', 'flag', 'country_name', 'inbound', 'protocol', 'transport', 'security', 'user', 'host', 'port']
-export const routeNamePlaceholders = [...remarkPlaceholders, 'remark', 'route']
+export const routeNamePlaceholders = [...remarkPlaceholders, 'remark', 'inbound_remark', 'route']
 export const routeUrlPlaceholders = [...routeNamePlaceholders, 'uuid', 'password', 'name']
+
+// how the reference groups placeholders, in the order it shows them
+export const placeholderGroups: { label: string, names: string[] }[] = [
+  { label: 'Node', names: ['node', 'country', 'flag', 'country_name'] },
+  { label: 'Inbound', names: ['inbound', 'protocol', 'transport', 'security'] },
+  { label: 'Connection', names: ['user', 'host', 'port'] },
+  { label: 'Destination', names: ['remark', 'inbound_remark', 'route', 'name'] },
+  { label: 'Credentials', names: ['uuid', 'password'] },
+]
+
+// a template with a placeholder added at the end, a space apart from what is already there
+export function appendPlaceholder(tpl: string | undefined, token: string): string {
+  if (!tpl) return token
+  return /\s$/.test(tpl) ? tpl + token : `${tpl} ${token}`
+}
 
 const placeholder = /\{(\w*)(?::([\w-]*))?\}/g
 
