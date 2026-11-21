@@ -1,5 +1,5 @@
 <template>
-  <form v-if="form" class="flex max-w-3xl flex-col gap-5" novalidate @submit.prevent="save()">
+  <form v-if="form" class="flex flex-col gap-5" novalidate @submit.prevent="save()">
     <Section :title="$t('Telegram')" hint="Alerts for admins, and optionally for users who linked their account.">
       <div class="flex flex-col gap-3">
         <ToggleRow v-model="form.telegram.enabled" label="Enable the bot" hint="A bot token from @BotFather." />

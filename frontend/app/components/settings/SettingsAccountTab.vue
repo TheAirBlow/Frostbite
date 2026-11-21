@@ -1,5 +1,5 @@
 <template>
-  <form class="flex max-w-md flex-col gap-4" novalidate @submit.prevent="save()">
+  <form class="flex flex-col gap-4" novalidate @submit.prevent="save()">
     <div class="surface flex items-center gap-3 p-4">
       <span class="bg-primary/15 text-primary grid size-12 place-items-center rounded-2xl text-lg font-semibold uppercase">{{ auth.me?.username[0] }}</span>
       <div><p class="font-display text-xl font-semibold">{{ auth.me?.username }}</p><p class="text-base-content/60 text-sm capitalize">{{ auth.me?.role }}</p></div>

@@ -9,63 +9,65 @@
       </select>
     </PageHeader>
 
-    <div class="grid gap-4 xl:grid-cols-5">
-      <div class="flex flex-col gap-4 xl:col-span-3">
-        <Section :title="$t('Rules')" hint="The first rule that matches wins. Everything else follows the daemon's default outbound.">
-          <template #actions>
-            <button class="btn btn-sm btn-soft btn-primary" @click="side.open('rule')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add rule') }}</button>
-          </template>
-          <Skeleton v-if="!rules" :rows="3" :height="60" />
-          <div v-else-if="visibleRules.length" class="flex flex-col gap-2">
-            <div v-for="(r, idx) in visibleRules" :key="r.id" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3" :class="{ 'opacity-50': !r.enabled }">
-              <div class="flex flex-col">
-                <button class="btn btn-ghost btn-xs btn-square" :disabled="idx === 0" :aria-label="$t('Move up')" @click="move(r, -1)"><Icon name="fa6-solid:chevron-up" size="11" /></button>
-                <button class="btn btn-ghost btn-xs btn-square" :disabled="idx === visibleRules.length - 1" :aria-label="$t('Move down')" @click="move(r, 1)"><Icon name="fa6-solid:chevron-down" size="11" /></button>
-              </div>
-              <button class="min-w-0 flex-1 text-left" @click="side.open('rule', r.id)">
-                <p class="flex flex-wrap items-center gap-2 font-medium">
-                  {{ r.name || summary(r) }}
-                  <span class="badge badge-sm" :class="r.outbound === 'block' ? 'badge-error badge-soft' : r.outbound === 'direct' ? 'badge-ghost' : 'badge-primary badge-soft'"><Icon name="fa6-solid:arrow-right" size="9" /> {{ r.outbound }}</span>
-                  <span v-if="r.daemon_id" class="badge badge-sm badge-ghost">{{ daemonName(r.daemon_id) }}</span>
-                </p>
-                <p v-if="r.name" class="text-base-content/50 truncate text-xs">{{ summary(r) }}</p>
-              </button>
-              <input type="checkbox" class="toggle toggle-sm toggle-primary" :checked="r.enabled" :aria-label="`Enable ${r.name}`" @change="toggle(r)">
-            </div>
-          </div>
-          <EmptyState v-else icon="fa6-solid:route" :title="$t('No rules')" text="Everything uses the default outbound until you add a rule." />
-        </Section>
-
-        <Section :title="$t('Quick switches')" hint="Applied to every daemon, before your own rules.">
-          <form v-if="routing" class="flex flex-col" novalidate @submit.prevent="saveSwitches()">
+    <div class="flex flex-col gap-4">
+      <Section :title="$t('Quick switches')" hint="Applied to every daemon, before your own rules.">
+        <form v-if="routing" class="flex flex-col" novalidate @submit.prevent="saveSwitches()">
+          <div class="grid gap-x-10 md:grid-cols-2">
             <ToggleRow v-model="routing.block_ads" label="Block ads and trackers" hint="Uses the geosite category-ads-all list." />
             <ToggleRow v-model="routing.block_bittorrent" label="Block BitTorrent" hint="Needs sniffing on the inbound, which the presets turn on." />
             <ToggleRow v-model="routing.block_private" label="Block private networks" hint="Stops users from reaching the node's LAN and metadata services." />
             <ToggleRow v-model="routing.block_quic" label="Block QUIC (UDP 443)" hint="Browsers fall back to TCP, which proxies handle better." />
-            <FormField label="Always direct" name="direct_domains" hint="These domains skip the proxy chain on the node."><ChipInput v-model="routing.direct_domains" :placeholder="$t('example.com')" :check="checkDirectDomain" /></FormField>
-            <FormBanner class="mt-3" />
-            <button class="btn btn-primary btn-sm mt-3 self-end" :disabled="saving">{{ $t('Save switches') }}</button>
-          </form>
-        </Section>
-      </div>
+          </div>
+          <FormField label="Always direct" name="direct_domains" hint="These domains skip the proxy chain on the node."><ChipInput v-model="routing.direct_domains" :placeholder="$t('example.com')" :check="checkDirectDomain" /></FormField>
+          <FormBanner class="mt-3" />
+          <button class="btn btn-primary btn-sm mt-3 self-end" :disabled="saving">{{ $t('Save switches') }}</button>
+        </form>
+        <Skeleton v-else :rows="2" :height="48" />
+      </Section>
 
-      <Section :title="$t('Outbounds')" hint="Exits a daemon can use. direct and block always exist." class="xl:col-span-2 self-start">
+      <Section :title="$t('Rules')" hint="The first rule that matches wins. Everything else follows the daemon's default outbound.">
+        <template #actions>
+          <button class="btn btn-sm btn-soft btn-primary" @click="side.open('rule')"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add rule') }}</button>
+        </template>
+        <Skeleton v-if="!rules" :rows="3" :height="60" />
+        <div v-else-if="visibleRules.length" class="flex flex-col gap-2">
+          <div v-for="(r, idx) in visibleRules" :key="r.id" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3" :class="{ 'opacity-50': !r.enabled }">
+            <div class="flex flex-col">
+              <button class="btn btn-ghost btn-xs btn-square" :disabled="idx === 0" :aria-label="$t('Move up')" @click="move(r, -1)"><Icon name="fa6-solid:chevron-up" size="11" /></button>
+              <button class="btn btn-ghost btn-xs btn-square" :disabled="idx === visibleRules.length - 1" :aria-label="$t('Move down')" @click="move(r, 1)"><Icon name="fa6-solid:chevron-down" size="11" /></button>
+            </div>
+            <button class="min-w-0 flex-1 text-left" @click="side.open('rule', r.id)">
+              <p class="flex flex-wrap items-center gap-2 font-medium">
+                {{ r.name || summary(r) }}
+                <span class="badge badge-sm" :class="r.outbound === 'block' ? 'badge-error badge-soft' : r.outbound === 'direct' ? 'badge-ghost' : 'badge-primary badge-soft'"><Icon name="fa6-solid:arrow-right" size="9" /> {{ r.outbound }}</span>
+                <span v-if="r.daemon_id" class="badge badge-sm badge-ghost">{{ daemonName(r.daemon_id) }}</span>
+              </p>
+              <p v-if="r.name" class="text-base-content/50 truncate text-xs">{{ summary(r) }}</p>
+            </button>
+            <input type="checkbox" class="toggle toggle-sm toggle-primary" :checked="r.enabled" :aria-label="`Enable ${r.name}`" @change="toggle(r)">
+          </div>
+        </div>
+        <EmptyState v-else compact icon="fa6-solid:route" :title="$t('No rules')" text="Everything uses the default outbound until you add a rule." />
+      </Section>
+
+
+      <Section :title="$t('Outbounds')" hint="Exits a daemon can use. direct and block always exist.">
         <template #actions>
           <button class="btn btn-sm btn-soft btn-primary" :disabled="!allDaemons.length" @click="side.open('outbound', null, scope ? { daemon: scope } : {})"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button>
         </template>
-        <div class="flex flex-col gap-2">
-          <div class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3"><Icon name="fa6-solid:globe" size="14" class="text-base-content/50" /><div class="flex-1"><p class="font-medium">{{ $t('direct') }}</p><p class="text-base-content/50 text-xs">{{ $t('Straight to the internet from the node.') }}</p></div><span class="badge badge-sm badge-ghost">{{ $t('built in') }}</span></div>
-          <div class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3"><Icon name="fa6-solid:ban" size="14" class="text-base-content/50" /><div class="flex-1"><p class="font-medium">{{ $t('block') }}</p><p class="text-base-content/50 text-xs">{{ $t('Drops the connection.') }}</p></div><span class="badge badge-sm badge-ghost">{{ $t('built in') }}</span></div>
+        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <div class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3"><Icon name="fa6-solid:globe" size="14" class="text-base-content/50" /><div class="min-w-0 flex-1"><p class="font-medium">{{ $t('direct') }}</p><p class="text-base-content/50 text-xs">{{ $t('Straight to the internet from the node.') }}</p></div><span class="badge badge-sm badge-ghost">{{ $t('built in') }}</span></div>
+          <div class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3"><Icon name="fa6-solid:ban" size="14" class="text-base-content/50" /><div class="min-w-0 flex-1"><p class="font-medium">{{ $t('block') }}</p><p class="text-base-content/50 truncate text-xs">{{ $t('Drops the connection.') }}</p></div><span class="badge badge-sm badge-ghost">{{ $t('built in') }}</span></div>
           <button v-for="o in visibleOutbounds" :key="o.id" class="bg-base-100 border-base-300 hover:border-primary/50 flex items-center gap-3 rounded-xl border p-3 text-left transition" @click="side.open('outbound', o.id)">
             <Icon :name="o.target_inbound_id ? 'fa6-solid:link' : o.kind === 'warp' ? 'fa6-solid:cloud' : 'fa6-solid:share-nodes'" size="14" class="text-primary" />
             <div class="min-w-0 flex-1">
-              <p class="font-medium">{{ o.tag }}</p>
+              <p class="truncate font-medium">{{ o.tag }}</p>
               <p class="text-base-content/50 truncate text-xs">{{ outboundText(o) }}</p>
             </div>
-            <span class="badge badge-sm badge-ghost">{{ daemonName(o.daemon_id) }}</span>
+            <span class="badge badge-sm badge-ghost shrink-0">{{ daemonName(o.daemon_id) }}</span>
           </button>
+          <p v-if="!visibleOutbounds.length" class="border-base-300 text-base-content/50 flex items-center rounded-xl border border-dashed p-3 text-sm md:max-xl:col-span-2">{{ $t('Add a chain to another server, a proxy from a share link, or a WARP interface.') }}</p>
         </div>
-        <p v-if="!visibleOutbounds.length" class="text-base-content/50 mt-3 text-sm">{{ $t('Add a chain to another server, a proxy from a share link, or a WARP interface.') }}</p>
       </Section>
     </div>
   </div>

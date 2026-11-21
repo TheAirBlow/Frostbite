@@ -1,16 +1,16 @@
-// Package naive renders the config of the naive daemon: Caddy with the NaiveProxy fork of forwardproxy, where every
-// visitor that is no proxy user is sent on to a real site.
+// Package naive renders the config of the naive daemon: Caddy serving NaiveProxy tunnels, where every visitor that is
+// no proxy user is sent on to a real site.
 package naive
 
 import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"slices"
 	"strconv"
 	"strings"
 
 	"frostbite/internal/core"
+	"frostbite/internal/core/singbox"
 	"frostbite/internal/spec"
 )
 
@@ -22,15 +22,18 @@ func init() {
 			Protocols:  []string{spec.ProtoNaive},
 			Transports: []string{spec.TransportTCP},
 			Securities: []string{spec.SecurityTLS},
-			Outbounds:  []string{spec.OutDirect, spec.OutBlock},
+			Outbounds:  []string{spec.OutDirect, spec.OutBlock, spec.OutProxy, spec.OutWarp},
 			HotUsers:   true,
 		},
 		Render: Render,
 	})
 }
 
-// GateModule is the handler that checks proxy users, see internal/agent/naive/gate.
+// GateModule is the handler that checks proxy users and tunnels them, see internal/agent/naive/gate.
 const GateModule = "frostbite_gate"
+
+// EgressApp is the Caddy app that sniffs, routes, resolves and dials for the tunnels, see internal/agent/egress.
+const EgressApp = "frostbite_egress"
 
 // Render builds the Caddy config for d. Users are not part of it: they live in the running process, so adding and
 // removing them never needs a reload.
@@ -41,7 +44,7 @@ func Render(d spec.Daemon) ([]byte, error) {
 		if in.Protocol != spec.ProtoNaive {
 			continue
 		}
-		srv, err := server(d, in)
+		srv, err := server(in)
 		if err != nil {
 			return nil, fmt.Errorf("inbound %s: %w", in.Tag, err)
 		}
@@ -54,8 +57,13 @@ func Render(d spec.Daemon) ([]byte, error) {
 
 	apps := map[string]any{}
 	if len(servers) > 0 {
+		egress, err := egress(d)
+		if err != nil {
+			return nil, err
+		}
 		apps["http"] = map[string]any{"servers": servers}
 		apps["tls"] = map[string]any{"certificates": map[string]any{"load_files": certs}}
+		apps[EgressApp] = egress
 	}
 	cfg := map[string]any{
 		// the agent drives Caddy in its own process, so the admin api would only be a way in
@@ -86,8 +94,25 @@ func logLevel(l string) string {
 	return "INFO"
 }
 
+// egress renders the way out of the tunnels. Private ranges stay refused unless a rule sends them somewhere, as
+// NaiveProxy's forwardproxy always did.
+func egress(d spec.Daemon) (map[string]any, error) {
+	cfg, err := singbox.RenderEgress(d)
+	if err != nil {
+		return nil, err
+	}
+	route, _ := cfg["route"].(map[string]any)
+	if route == nil {
+		route = map[string]any{}
+		cfg["route"] = route
+	}
+	rules, _ := route["rules"].([]any)
+	route["rules"] = append(rules, map[string]any{"ip_is_private": true, "action": "reject"})
+	return cfg, nil
+}
+
 // server renders one inbound as a Caddy http server.
-func server(d spec.Daemon, in spec.Inbound) (map[string]any, error) {
+func server(in spec.Inbound) (map[string]any, error) {
 	if in.Security.CertPath == "" || in.Security.KeyPath == "" {
 		return nil, fmt.Errorf("no certificate to serve")
 	}
@@ -98,7 +123,7 @@ func server(d spec.Daemon, in spec.Inbound) (map[string]any, error) {
 		"automatic_https":         map[string]any{"disable": true},
 		"tls_connection_policies": []any{map[string]any{"certificate_selection": map[string]any{"any_tag": []string{in.Tag}}}},
 		"routes": []any{
-			map[string]any{"handle": []any{gate(d, in)}},
+			map[string]any{"handle": []any{map[string]any{"handler": GateModule, "inbound": in.Tag}}},
 			map[string]any{"handle": []any{hideVia(), site(o)}},
 		},
 	}
@@ -109,66 +134,6 @@ func server(d spec.Daemon, in spec.Inbound) (map[string]any, error) {
 		}
 	}
 	return srv, nil
-}
-
-// gate renders the handler that lets proxy users in. UDP over TCP is answered by the gate itself, so it gets the same
-// access rules the proxy handler applies to connections.
-func gate(d spec.Daemon, in spec.Inbound) map[string]any {
-	g := map[string]any{"handler": GateModule, "inbound": in.Tag, "proxy": proxy(d, in)}
-	if acl := access(d, in); len(acl) > 0 {
-		g["acl"] = acl
-	}
-	return g
-}
-
-// proxy renders the handler that tunnels authenticated users.
-func proxy(d spec.Daemon, in spec.Inbound) map[string]any {
-	h := map[string]any{"handler": "forward_proxy", "hide_ip": true, "hide_via": true}
-	if acl := access(d, in); len(acl) > 0 {
-		h["acl"] = acl
-	}
-	return h
-}
-
-// access turns the rules that block or allow destinations into forwardproxy rules, first match wins. Private ranges
-// are always refused by forwardproxy itself.
-func access(d spec.Daemon, in spec.Inbound) []any {
-	var out []any
-	for _, r := range d.Rules {
-		if len(r.Users) > 0 || (len(r.InboundTags) > 0 && !slices.Contains(r.InboundTags, in.Tag)) {
-			continue
-		}
-		if len(r.GeoSite)+len(r.GeoIP)+len(r.DomainKw)+len(r.Port)+len(r.Protocol) > 0 || r.Network != "" {
-			continue
-		}
-		var allow bool
-		switch outboundKind(d, r.Outbound) {
-		case spec.OutBlock:
-		case spec.OutDirect:
-			allow = true
-		default:
-			continue
-		}
-		subjects := slices.Clone(r.IPCIDR)
-		subjects = append(subjects, r.Domain...)
-		for _, s := range r.DomainSuffix {
-			subjects = append(subjects, "*."+strings.TrimPrefix(s, "."))
-		}
-		if len(subjects) > 0 {
-			out = append(out, map[string]any{"subjects": subjects, "allow": allow})
-		}
-	}
-	return out
-}
-
-// outboundKind says what an outbound tag stands for.
-func outboundKind(d spec.Daemon, tag string) string {
-	for _, o := range d.Outbounds {
-		if o.Tag == tag {
-			return o.Kind
-		}
-	}
-	return ""
 }
 
 // site renders the handler every other visitor reaches.

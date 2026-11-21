@@ -21,7 +21,7 @@
           </div>
         </div>
         <dl class="grid flex-1 grid-cols-2 gap-x-6 gap-y-3 text-sm">
-          <div><dt class="text-base-content/50 text-xs">{{ t('portal.traffic') }}</dt><dd class="font-medium">{{ formatBytes(data.user.traffic_used) }}<span v-if="data.user.traffic_limit" class="text-base-content/50 font-normal"> {{ t('portal.of', { limit: formatBytes(data.user.traffic_limit) }) }}</span></dd></div>
+          <div><dt class="text-base-content/50 text-xs">{{ t('portal.traffic') }}</dt><dd class="font-medium">{{ formatBytes(data.user.traffic_used) }}<span v-if="data.user.traffic_limit" class="text-base-content/50 ms-1 font-normal">{{ t('portal.of', { limit: formatBytes(data.user.traffic_limit) }) }}</span></dd></div>
           <div><dt class="text-base-content/50 text-xs">{{ t('portal.remaining') }}</dt><dd class="font-medium">{{ data.user.traffic_limit ? formatBytes(Math.max(0, data.user.traffic_limit - data.user.traffic_used)) : t('portal.unlimited') }}</dd></div>
           <div><dt class="text-base-content/50 text-xs">{{ t('portal.validUntil') }}</dt><dd class="font-medium">{{ data.user.expire_at ? formatDate(data.user.expire_at) : data.user.status === 'on_hold' ? t('portal.startsFirstUse') : t('portal.noEnd') }}</dd></div>
           <div><dt class="text-base-content/50 text-xs">{{ t('portal.timeLeft') }}</dt><dd class="font-medium">{{ timeLeft }}</dd></div>
@@ -33,15 +33,15 @@
         <p class="text-base-content/60 mb-3 text-sm">{{ t('portal.connectText') }}</p>
         <div class="flex flex-col gap-2">
           <div v-for="a in recommended" :key="a.id" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3">
-            <div class="min-w-0 flex-1"><p class="font-medium">{{ a.name }}</p><p class="text-base-content/50 text-xs capitalize">{{ a.platforms.join(', ') }}</p></div>
+            <div class="min-w-0 flex-1"><p class="font-medium">{{ a.name }}</p><p class="text-base-content/50 text-xs">{{ a.platforms.map(p => platformLabels[p] ?? p).join(', ') }}</p></div>
             <a :href="a.download" target="_blank" rel="noopener" class="btn btn-sm">{{ t('portal.getApp') }}</a>
             <a v-if="a.import" :href="deepLink(a.import)" class="btn btn-sm btn-primary"><Icon name="fa6-solid:plus" size="11" /> {{ t('portal.add') }}</a>
           </div>
         </div>
-        <button v-if="others.length" class="btn btn-ghost btn-sm text-base-content/60 mt-2" @click="showAll = !showAll">{{ showAll ? t('portal.hideOthers') : t('portal.showOthers') }}</button>
+        <button v-if="others.length" class="btn btn-sm mt-2" @click="showAll = !showAll">{{ showAll ? t('portal.hideOthers') : t('portal.showOthers') }}</button>
         <div v-if="showAll" class="mt-2 flex flex-col gap-2">
           <div v-for="a in others" :key="a.id" class="bg-base-100 border-base-300 flex items-center gap-3 rounded-xl border p-3">
-            <div class="min-w-0 flex-1"><p class="font-medium">{{ a.name }}</p><p class="text-base-content/50 text-xs capitalize">{{ a.platforms.join(', ') }}</p></div>
+            <div class="min-w-0 flex-1"><p class="font-medium">{{ a.name }}</p><p class="text-base-content/50 text-xs">{{ a.platforms.map(p => platformLabels[p] ?? p).join(', ') }}</p></div>
             <a :href="a.download" target="_blank" rel="noopener" class="btn btn-sm">{{ t('portal.getApp') }}</a>
             <a v-if="a.import" :href="deepLink(a.import)" class="btn btn-sm btn-soft btn-primary">{{ t('portal.add') }}</a>
           </div>
@@ -103,6 +103,7 @@ const accentStyle = computed(() => (data.value?.brand?.accent ? { '--color-prima
 const showAll = ref(false)
 const showLinks = ref(false)
 const shownUrl = computed(() => (format.value ? data.value?.formats[format.value] : data.value?.sub_url) ?? '')
+const platformLabels: Record<string, string> = { android: 'Android', ios: 'iOS', windows: 'Windows', macos: 'macOS', linux: 'Linux' }
 const formatNames: Record<string, string> = { links: 'Share links', raw: 'Plain links', clash: 'Clash / Mihomo', singbox: 'sing-box', xray: 'Xray JSON' }
 
 const pct = computed(() => percent(data.value?.user.traffic_used ?? 0, data.value?.user.traffic_limit ?? 0))

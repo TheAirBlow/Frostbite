@@ -111,11 +111,9 @@ func TestEdgeHeaderIsAccepted(t *testing.T) {
 	}
 }
 
-func TestRulesBecomeAccessRules(t *testing.T) {
+func TestRulesGoToTheEgress(t *testing.T) {
 	d := daemon(spec.Options{NaiveDest: "127.0.0.1:8443"})
 	d.Rules = []spec.Rule{
-		{IPCIDR: []string{"203.0.113.0/24"}, Outbound: "block"},
-		{DomainSuffix: []string{"example.com"}, Outbound: "direct"},
 		{GeoSite: []string{"category-ads-all"}, Outbound: "block"},
 		{Users: []string{"u1"}, Domain: []string{"x.test"}, Outbound: "block"},
 	}
@@ -124,29 +122,18 @@ func TestRulesBecomeAccessRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cfg struct {
-		Apps struct {
-			HTTP struct {
-				Servers map[string]struct {
-					Routes []struct {
-						Handle []struct {
-							Proxy struct {
-								ACL []struct {
-									Subjects []string
-									Allow    bool
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+		Apps map[string]struct {
+			Route struct {
+				Rules []map[string]any `json:"rules"`
+			} `json:"route"`
+		} `json:"apps"`
 	}
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	acl := cfg.Apps.HTTP.Servers["n1"].Routes[0].Handle[0].Proxy.ACL
-	if len(acl) != 2 || acl[0].Allow || acl[0].Subjects[0] != "203.0.113.0/24" || !acl[1].Allow || acl[1].Subjects[0] != "*.example.com" {
-		t.Errorf("acl = %+v", acl)
+	rules := cfg.Apps[EgressApp].Route.Rules
+	if len(rules) != 3 || rules[0]["rule_set"] == nil || rules[1]["auth_user"] == nil || rules[2]["ip_is_private"] != true {
+		t.Errorf("rules = %+v", rules)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"frostbite/internal/core"
+	"frostbite/internal/core/singbox"
 	"frostbite/internal/spec"
 )
 
@@ -21,7 +22,7 @@ func init() {
 			Protocols:  []string{spec.ProtoTrojan},
 			Transports: []string{spec.TransportTCP},
 			Securities: []string{spec.SecurityTLS},
-			Outbounds:  []string{spec.OutDirect, spec.OutBlock},
+			Outbounds:  []string{spec.OutDirect, spec.OutBlock, spec.OutProxy, spec.OutWarp},
 			HotUsers:   true,
 		},
 		Render: Render,
@@ -30,18 +31,10 @@ func init() {
 
 // Config is what the trojan daemon runs. Users are not part of it, so they change without touching a listener.
 type Config struct {
-	LogLevel  string     `json:"log_level"`
-	DNS       DNS        `json:"dns"`
-	Inbounds  []Inbound  `json:"inbounds"`
-	Outbounds []Outbound `json:"outbounds"`
-	Rules     []Rule     `json:"rules"`
-	Final     string     `json:"final"`
-}
-
-// DNS is the resolver used for destinations given by name.
-type DNS struct {
-	Servers  []string `json:"servers,omitempty"` // ip or ip:port, the system resolver when empty
-	Strategy string   `json:"strategy,omitempty"`
+	LogLevel string    `json:"log_level"`
+	Inbounds []Inbound `json:"inbounds"`
+	// Egress is the sing-box config that sniffs, routes, resolves and dials for the tunnels, see singbox.RenderEgress.
+	Egress json.RawMessage `json:"egress"`
 }
 
 // Inbound is one listening port.
@@ -54,7 +47,6 @@ type Inbound struct {
 	Site        Site   `json:"site"`
 	Plain       string `json:"plain,omitempty"`       // see spec.TrojanPlain*
 	UDPTimeout  int    `json:"udp_timeout"`           // seconds
-	Sniff       *Sniff `json:"sniff,omitempty"`       // read the first bytes of a tunnel for a server name
 	Padding     bool   `json:"mux_padding,omitempty"` // sing-mux clients must pad
 }
 
@@ -95,71 +87,17 @@ type Site struct {
 // HTTP reports whether the site is reached by reading the visitor's requests rather than passing bytes on.
 func (s Site) HTTP() bool { return s.IPHeader != "" || len(s.Headers) > 0 }
 
-// Sniff is protocol sniffing on tunnels.
-type Sniff struct {
-	RouteOnly    bool `json:"route_only,omitempty"`    // the name is only used to pick a rule
-	DestOverride bool `json:"dest_override,omitempty"` // dial the sniffed name instead of the address
-}
-
-// Outbound is a way out. Only direct and block exist here.
-type Outbound struct {
-	Tag       string `json:"tag"`
-	Kind      string `json:"kind"`
-	Interface string `json:"interface,omitempty"`
-	Strategy  string `json:"strategy,omitempty"`
-}
-
-// Rule sends matching destinations to an outbound, first match wins.
-type Rule struct {
-	Inbounds     []string `json:"inbounds,omitempty"`
-	Users        []string `json:"users,omitempty"`
-	Domain       []string `json:"domain,omitempty"`
-	DomainSuffix []string `json:"domain_suffix,omitempty"`
-	DomainKw     []string `json:"domain_keyword,omitempty"`
-	IPCIDR       []string `json:"ip_cidr,omitempty"`
-	Port         []string `json:"port,omitempty"`
-	Network      string   `json:"network,omitempty"`
-	Outbound     string   `json:"outbound"`
-}
-
 // Render builds the config for d.
 func Render(d spec.Daemon) ([]byte, error) {
-	cfg := Config{
-		LogLevel: logLevel(d.Log.Level),
-		DNS:      DNS{Servers: plainServers(d.DNS.Servers), Strategy: d.DNS.Strategy},
-		Inbounds: []Inbound{}, Outbounds: []Outbound{}, Rules: []Rule{},
-		Final: d.Final,
+	egress, err := singbox.RenderEgress(d)
+	if err != nil {
+		return nil, err
 	}
-	kinds := map[string]string{}
-	for _, o := range d.Outbounds {
-		if o.Kind != spec.OutDirect && o.Kind != spec.OutBlock {
-			continue
-		}
-		kinds[o.Tag] = o.Kind
-		cfg.Outbounds = append(cfg.Outbounds, Outbound{Tag: o.Tag, Kind: o.Kind, Interface: o.Interface, Strategy: o.Strategy})
+	raw, err := json.Marshal(egress)
+	if err != nil {
+		return nil, err
 	}
-	if cfg.Final == "" {
-		cfg.Final = spec.OutDirect
-	}
-	if _, ok := kinds[cfg.Final]; !ok {
-		if cfg.Final != spec.OutDirect {
-			return nil, fmt.Errorf("final outbound %q is not direct or block, which is all the trojan daemon can use", cfg.Final)
-		}
-		cfg.Outbounds = append(cfg.Outbounds, Outbound{Tag: spec.OutDirect, Kind: spec.OutDirect})
-	}
-	for _, r := range d.Rules {
-		if _, ok := kinds[r.Outbound]; !ok {
-			continue
-		}
-		// geo lists and sniffed protocols need data this daemon does not carry, so such rules are left out
-		if len(r.GeoSite)+len(r.GeoIP)+len(r.Protocol) > 0 {
-			continue
-		}
-		cfg.Rules = append(cfg.Rules, Rule{
-			Inbounds: r.InboundTags, Users: r.Users, Domain: r.Domain, DomainSuffix: r.DomainSuffix, DomainKw: r.DomainKw,
-			IPCIDR: r.IPCIDR, Port: r.Port, Network: r.Network, Outbound: r.Outbound,
-		})
-	}
+	cfg := Config{LogLevel: logLevel(d.Log.Level), Inbounds: []Inbound{}, Egress: raw}
 
 	for _, in := range d.Inbounds {
 		if in.Protocol != spec.ProtoTrojan {
@@ -244,9 +182,6 @@ func inbound(in spec.Inbound) (Inbound, error) {
 		UDPTimeout: timeout,
 		Padding:    o.Mux != nil && o.Mux.Enabled && o.Mux.Padding,
 	}
-	if in.Sniffing.Enabled {
-		ib.Sniff = &Sniff{RouteOnly: in.Sniffing.RouteOnly, DestOverride: in.Sniffing.DestOverride}
-	}
 	return ib, nil
 }
 
@@ -259,19 +194,6 @@ func proxyVersion(v string) int {
 		return 2
 	}
 	return 0
-}
-
-// plainServers keeps the resolvers given as an address, the only kind this daemon asks.
-func plainServers(servers []string) []string {
-	var out []string
-	for _, s := range servers {
-		if net.ParseIP(s) != nil {
-			out = append(out, net.JoinHostPort(s, "53"))
-		} else if host, _, err := net.SplitHostPort(s); err == nil && net.ParseIP(host) != nil {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 // logLevel maps a panel log level to the daemon's.

@@ -1,5 +1,5 @@
 <template>
-  <div class="flex max-w-xl flex-col gap-4">
+  <div class="flex flex-col gap-4">
     <div class="surface flex items-center gap-4 p-5">
       <span class="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-primary/90 to-secondary/90 text-primary-content"><Icon name="fa6-solid:snowflake" size="26" /></span>
       <div><p class="font-display text-2xl font-semibold">Frostbite</p><p class="text-base-content/60 text-sm">{{ $t('Multi node VPN panel') }}</p></div>

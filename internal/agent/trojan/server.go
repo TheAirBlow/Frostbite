@@ -13,10 +13,12 @@ import (
 
 	"github.com/pires/go-proxyproto"
 
+	"frostbite/internal/agent/egress"
 	coretrojan "frostbite/internal/core/trojan"
 )
 
 const (
+	dialTimeout      = 10 * time.Second
 	handshakeTimeout = 15 * time.Second
 	// requestTimeout is how long a visitor may wait after the handshake before saying anything, about what nginx allows.
 	requestTimeout = 60 * time.Second
@@ -144,6 +146,12 @@ func (s *server) dropAll() {
 // meta says whose connection a tunnel belongs to.
 type meta struct {
 	inbound, user string
+	src           net.Addr
+}
+
+// route describes a tunnel to the egress. timeout limits how long a packet flow may stay idle.
+func (s *server) route(m meta, dst addr, timeout time.Duration) egress.Meta {
+	return egress.Meta{Inbound: m.inbound, InboundType: "trojan", User: m.user, Source: m.src, Destination: dst.socks(), UDPTimeout: timeout}
 }
 
 // handle runs one connection from its first byte to the end.
@@ -197,23 +205,19 @@ func (s *server) handle(c net.Conn) {
 		return
 	}
 	cc := &countedConn{Conn: tc, br: br, c: cnt}
-	m := meta{inbound: s.tag, user: name}
+	m := meta{inbound: s.tag, user: name, src: c.RemoteAddr()}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	switch {
 	case req.cmd == cmdUDP:
-		s.relayUDP(ctx, m, &trojanPackets{r: cc, w: cc}, func() { _ = c.Close() }, udpTimeout(st))
+		s.relayUDP(ctx, m, &trojanPackets{r: cc, w: cc}, func() { _ = c.Close() }, udpTimeout(st), cc)
 	case req.dst.host == singMuxHost:
 		s.serveSingMux(ctx, m, cc, st)
 	case req.dst.host == muxCoolHost:
 		s.serveMuxCool(ctx, m, cc, st)
 	default:
-		var head []byte
-		if st.ib.Sniff != nil {
-			head = peekHead(c, br)
-		}
-		_ = s.tunnel(ctx, m, cc, req.dst, head, st.ib.Sniff, nil)
+		_ = s.tunnel(ctx, m, cc, req.dst)
 	}
 }
 
@@ -254,33 +258,13 @@ func tcpOf(c net.Conn) *net.TCPConn {
 	return nil
 }
 
-// tunnel connects a TCP stream of a user to dst. head is what the client sent first, for sniffing, and ready runs once
-// the destination answered.
-func (s *server) tunnel(ctx context.Context, m meta, client io.ReadWriteCloser, dst addr, head []byte, sniff *coretrojan.Sniff, ready func()) error {
-	t := target{inbound: m.inbound, user: m.user, network: "tcp", dst: dst}
-	dial := dst
-	if sniff != nil {
-		if name := sniffName(head); name != "" {
-			t.sniffed = name
-			if sniff.DestOverride && !sniff.RouteOnly {
-				dial = addr{host: name, port: dst.port}
-			}
-		}
-	}
-	rt := s.rt.router.Load()
-	out := rt.route(ctx, t)
-	up, err := rt.dial(ctx, out, dial)
+// tunnel hands a TCP stream of a user to the egress, which sniffs, routes and dials it.
+func (s *server) tunnel(ctx context.Context, m meta, client net.Conn, dst addr) error {
+	err := s.rt.egress.RouteConn(ctx, client, s.route(m, dst, 0))
 	if err != nil {
-		s.rt.logf(levelDebug, "%s: tcp to %s through %s failed: %v", m.user, dial, out.tag, err)
-		return err
+		s.rt.logf(levelDebug, "%s: tcp to %s: %v", m.user, dst, err)
 	}
-	defer up.Close()
-	s.rt.logf(levelDebug, "%s: tcp to %s through %s", m.user, dial, out.tag)
-	if ready != nil {
-		ready()
-	}
-	relay(client, up)
-	return nil
+	return err
 }
 
 type halfCloser interface{ CloseWrite() error }
@@ -323,13 +307,22 @@ func relay(a, b io.ReadWriteCloser) {
 	wg.Wait()
 }
 
-// bufConn is a connection whose first bytes were already read into a buffer.
+// bufConn is a connection whose first bytes were already read into r, a reader of the same connection. Once r is
+// drained, reads go to the connection itself and the buffer is let go.
 type bufConn struct {
 	net.Conn
 	r *bufio.Reader
 }
 
-func (c *bufConn) Read(p []byte) (int, error) { return c.r.Read(p) }
+func (c *bufConn) Read(p []byte) (int, error) {
+	if c.r != nil && c.r.Buffered() == 0 {
+		c.r = nil
+	}
+	if c.r != nil {
+		return c.r.Read(p)
+	}
+	return c.Conn.Read(p)
+}
 
 func (c *bufConn) CloseWrite() error {
 	if hc, ok := c.Conn.(halfCloser); ok {
@@ -338,15 +331,22 @@ func (c *bufConn) CloseWrite() error {
 	return errors.ErrUnsupported
 }
 
-// countedConn is the tunnel of a user, counting what passes.
+// countedConn is the tunnel of a user, counting what passes. br holds what was read past the request, as in bufConn.
 type countedConn struct {
 	net.Conn
 	br *bufio.Reader
 	c  *counter
 }
 
-func (c *countedConn) Read(p []byte) (int, error) {
-	n, err := c.br.Read(p)
+func (c *countedConn) Read(p []byte) (n int, err error) {
+	if c.br != nil && c.br.Buffered() == 0 {
+		c.br = nil
+	}
+	if c.br != nil {
+		n, err = c.br.Read(p)
+	} else {
+		n, err = c.Conn.Read(p)
+	}
 	c.c.up.Add(int64(n))
 	return n, err
 }

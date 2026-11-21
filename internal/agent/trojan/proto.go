@@ -8,6 +8,8 @@ import (
 	"net/netip"
 	"strconv"
 	"sync"
+
+	M "github.com/sagernet/sing/common/metadata"
 )
 
 // The trojan request, see https://trojan-gfw.github.io/trojan/protocol.
@@ -39,6 +41,14 @@ func (a addr) String() string {
 		return net.JoinHostPort(a.host, strconv.Itoa(int(a.port)))
 	}
 	return netip.AddrPortFrom(a.ip, a.port).String()
+}
+
+// socks is the address in sing's form.
+func (a addr) socks() M.Socksaddr {
+	if a.host != "" {
+		return M.Socksaddr{Fqdn: a.host, Port: a.port}
+	}
+	return M.SocksaddrFrom(a.ip, a.port)
 }
 
 // addrOf turns a resolved address into a destination.

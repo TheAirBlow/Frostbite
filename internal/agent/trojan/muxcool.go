@@ -8,7 +8,10 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // muxCoolHost is the destination Xray connects to when it multiplexes a trojan connection with Mux.Cool.
@@ -37,6 +40,7 @@ type coolMux struct {
 	st   *state
 	conn net.Conn
 	wmu  sync.Mutex
+	wb   []byte // the frames being written, guarded by wmu
 
 	mu      sync.Mutex
 	streams map[uint16]*coolStream
@@ -90,6 +94,7 @@ func (s *server) serveMuxCool(ctx context.Context, m meta, conn net.Conn, st *st
 
 func (x *coolMux) read(ctx context.Context) error {
 	var head [2]byte
+	var metaBuf [512]byte
 	for {
 		if _, err := io.ReadFull(x.conn, head[:]); err != nil {
 			return err
@@ -98,7 +103,7 @@ func (x *coolMux) read(ctx context.Context) error {
 		if size < 4 || size > 512 {
 			return fmt.Errorf("frame metadata of %d bytes", size)
 		}
-		meta := make([]byte, size)
+		meta := metaBuf[:size]
 		if _, err := io.ReadFull(x.conn, meta); err != nil {
 			return err
 		}
@@ -182,14 +187,9 @@ func (x *coolMux) run(ctx context.Context, st *coolStream, first []byte) {
 	var err error
 	if st.udp {
 		pc := &coolPackets{x: x, st: st, pending: first, has: first != nil}
-		x.s.relayUDP(ctx, x.m, pc, st.close, udpTimeout(x.st))
+		x.s.relayUDP(ctx, x.m, pc, st.close, udpTimeout(x.st), nil)
 	} else {
-		c := &coolConn{x: x, st: st, pending: first}
-		var head []byte
-		if x.st.ib.Sniff != nil {
-			head = first
-		}
-		err = x.s.tunnel(ctx, x.m, c, st.dst, head, x.st.ib.Sniff, nil)
+		err = x.s.tunnel(ctx, x.m, &coolConn{x: x, st: st, pending: first}, st.dst)
 	}
 	st.close()
 	st.end.Do(func() {
@@ -203,7 +203,35 @@ func (x *coolMux) run(ctx context.Context, st *coolStream, first []byte) {
 
 // write sends one frame. extra goes into the metadata after the option byte.
 func (x *coolMux) write(id uint16, status, opt byte, extra, data []byte) error {
-	b := make([]byte, 0, 2+4+len(extra)+2+len(data))
+	x.wmu.Lock()
+	defer x.wmu.Unlock()
+	x.wb = appendCoolFrame(x.wb[:0], id, status, opt, extra, data)
+	return x.flush()
+}
+
+// writeData sends p as Keep frames of at most coolChunk bytes, all in one write so they share TLS records.
+func (x *coolMux) writeData(id uint16, p []byte) error {
+	x.wmu.Lock()
+	defer x.wmu.Unlock()
+	x.wb = x.wb[:0]
+	for len(p) > 0 {
+		chunk := p[:min(len(p), coolChunk)]
+		x.wb = appendCoolFrame(x.wb, id, coolKeep, coolOptData, nil, chunk)
+		p = p[len(chunk):]
+	}
+	return x.flush()
+}
+
+// flush writes wb and lets a buffer grown by a large write go. wmu must be held.
+func (x *coolMux) flush() error {
+	_, err := x.conn.Write(x.wb)
+	if cap(x.wb) > 64<<10 {
+		x.wb = nil
+	}
+	return err
+}
+
+func appendCoolFrame(b []byte, id uint16, status, opt byte, extra, data []byte) []byte {
 	b = binary.BigEndian.AppendUint16(b, uint16(4+len(extra)))
 	b = binary.BigEndian.AppendUint16(b, id)
 	b = append(b, status, opt)
@@ -212,10 +240,7 @@ func (x *coolMux) write(id uint16, status, opt byte, extra, data []byte) error {
 		b = binary.BigEndian.AppendUint16(b, uint16(len(data)))
 		b = append(b, data...)
 	}
-	x.wmu.Lock()
-	defer x.wmu.Unlock()
-	_, err := x.conn.Write(b)
-	return err
+	return b
 }
 
 // coolTarget reads NETWORK PORT ATYP ADDR, and whether an XUDP global id follows.
@@ -278,12 +303,19 @@ func appendCoolTarget(b []byte, a addr) []byte {
 
 // coolConn is a TCP stream of the mux.
 type coolConn struct {
-	x       *coolMux
-	st      *coolStream
-	pending []byte
+	x        *coolMux
+	st       *coolStream
+	pending  []byte
+	deadline atomic.Pointer[time.Time] // of reads, which sniffing relies on
 }
 
 func (c *coolConn) Read(p []byte) (int, error) {
+	var expired <-chan time.Time
+	if d := c.deadline.Load(); d != nil && len(c.pending) == 0 {
+		t := time.NewTimer(time.Until(*d))
+		defer t.Stop()
+		expired = t.C
+	}
 	for len(c.pending) == 0 {
 		select {
 		case d := <-c.st.in:
@@ -291,6 +323,8 @@ func (c *coolConn) Read(p []byte) (int, error) {
 		case <-c.st.done:
 			// End closes a stream for good, so the destination must not wait for more
 			return 0, net.ErrClosed
+		case <-expired:
+			return 0, os.ErrDeadlineExceeded
 		}
 	}
 	n := copy(p, c.pending)
@@ -299,20 +333,28 @@ func (c *coolConn) Read(p []byte) (int, error) {
 }
 
 func (c *coolConn) Write(p []byte) (int, error) {
-	written := 0
-	for len(p) > 0 {
-		chunk := p[:min(len(p), coolChunk)]
-		if err := c.x.write(c.st.id, coolKeep, coolOptData, nil, chunk); err != nil {
-			return written, err
-		}
-		written += len(chunk)
-		p = p[len(chunk):]
+	if err := c.x.writeData(c.st.id, p); err != nil {
+		return 0, err
 	}
-	return written, nil
+	return len(p), nil
 }
 
 func (c *coolConn) Close() error {
 	c.st.close()
+	return nil
+}
+
+func (c *coolConn) LocalAddr() net.Addr              { return c.x.conn.LocalAddr() }
+func (c *coolConn) RemoteAddr() net.Addr             { return c.x.conn.RemoteAddr() }
+func (c *coolConn) SetDeadline(t time.Time) error    { return c.SetReadDeadline(t) }
+func (c *coolConn) SetWriteDeadline(time.Time) error { return nil }
+
+func (c *coolConn) SetReadDeadline(t time.Time) error {
+	if t.IsZero() {
+		c.deadline.Store(nil)
+	} else {
+		c.deadline.Store(&t)
+	}
 	return nil
 }
 
@@ -344,7 +386,8 @@ func (p *coolPackets) readPacket(b []byte) (int, addr, error) {
 func (p *coolPackets) writePacket(b []byte, from addr) error {
 	var extra []byte
 	if p.st.xudp {
-		extra = appendCoolTarget(nil, from)
+		var b [1 + 2 + 1 + 1 + 255]byte
+		extra = appendCoolTarget(b[:0], from)
 	}
 	return p.x.write(p.st.id, coolKeep, coolOptData, extra, b)
 }

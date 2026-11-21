@@ -15,7 +15,6 @@
             <FormField label="Support link" name="support_url"><input v-model="sub.support_url" class="input w-full" :placeholder="$t('https://t.me/…')"></FormField>
             <FormField label="Web page link" name="web_page_url" hint="Apps with a button for it open this."><input v-model="sub.web_page_url" class="input w-full"></FormField>
           </div>
-          <FormField label="Refresh every (hours)" name="update_hours" hint="How often apps are asked to re-fetch."><input v-model.number="sub.update_hours" type="number" min="1" class="input w-28"></FormField>
         </div>
       </Section>
       <Section :title="$t('Behaviour')">
@@ -23,6 +22,7 @@
           <FormField label="Format when the app is unknown" name="default_format">
             <select v-model="sub.default_format" class="select w-full"><option value="auto">{{ $t('Guess from the app name') }}</option><option v-for="f in formats" :key="f" :value="f">{{ formatLabels[f] ?? f }}</option></select>
           </FormField>
+          <FormField label="Refresh every (hours)" name="update_hours" hint="How often apps are asked to re-fetch."><input v-model.number="sub.update_hours" type="number" min="1" class="input w-28"></FormField>
           <FormField label="Turnable apps" name="turnable_agents" hint="Apps with these user agents get turnable:// links only.">
             <ChipInput v-model="sub.turnable_agents" :placeholder="$t('Turnable-Android')" spaces />
           </FormField>
@@ -43,7 +43,7 @@
             </FormField>
             <FormField label="Footer" name="footer" hint="A line under the page: a link to your site, terms, a contact. Up to 500 characters."><input v-model="sub.footer" class="input w-full"></FormField>
           </div>
-          <div class="bg-base-100 border-base-300 flex flex-col items-center gap-3 rounded-xl border p-5" :style="sub.accent ? { '--color-primary': sub.accent } : {}">
+          <div class="bg-base-100 border-base-300 flex flex-col items-center justify-center gap-3 rounded-xl border p-5" :style="sub.accent ? { '--color-primary': sub.accent } : {}">
             <img v-if="sub.logo_url" :src="sub.logo_url" alt="" class="size-14 rounded-2xl object-contain">
             <span v-else class="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-primary/90 to-secondary/90 text-primary-content"><Icon name="fa6-solid:snowflake" size="26" /></span>
             <p class="font-display text-xl font-semibold">{{ sub.title || 'Your title' }}</p>
@@ -57,7 +57,7 @@
     </FormScope>
 
     <!-- clients -->
-    <div v-else-if="tab === 'clients'" class="grid gap-4 xl:grid-cols-2">
+    <div v-else-if="tab === 'clients'" class="grid items-start gap-4 xl:grid-cols-2">
       <Section :title="$t('Client rules')" hint="The first rule whose pattern matches the app's user agent decides the format.">
         <template #actions><button class="btn btn-sm btn-soft btn-primary" @click="newRule()"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button></template>
         <div class="flex flex-col gap-2">

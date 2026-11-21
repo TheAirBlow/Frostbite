@@ -1,4 +1,4 @@
-// Package naive runs the naive daemon: Caddy with the NaiveProxy fork of forwardproxy, in this process. The gate keeps
+// Package naive runs the naive daemon: Caddy serving NaiveProxy tunnels, in this process. The gate keeps
 // the users, counts their traffic and can cut them off, so changing users never reloads the config and never drops
 // anyone who stays.
 package naive
@@ -19,7 +19,6 @@ import (
 
 	caddycore "github.com/caddyserver/caddy/v2"
 	_ "github.com/caddyserver/caddy/v2/modules/standard"
-	_ "github.com/caddyserver/forwardproxy"
 
 	"frostbite/internal/agent/logs"
 	"frostbite/internal/agent/naive/gate"
@@ -96,14 +95,14 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, rendered []byte) error
 	r.users = users
 
 	r.want = rendered
-	if bytes.Equal(rendered, r.cfg) {
-		return nil
+	if !bytes.Equal(rendered, r.cfg) {
+		if err := r.load(rendered); err != nil {
+			return err
+		}
+		r.cfg = rendered
 	}
-	if err := r.load(rendered); err != nil {
-		return err
-	}
-	r.cfg = rendered
-	return nil
+	// the site and the gate run without the egress, which retries on its own
+	return gate.EgressError()
 }
 
 // setUsers replaces the users of one inbound.
@@ -175,6 +174,7 @@ func (r *Runtime) Close() error {
 		r.cfg = nil
 	}
 	r.want = nil
+	gate.CloseEgress()
 	return nil
 }
 

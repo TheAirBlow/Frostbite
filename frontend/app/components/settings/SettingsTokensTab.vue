@@ -1,5 +1,5 @@
 <template>
-  <div class="flex max-w-2xl flex-col gap-4">
+  <div class="flex flex-col gap-4">
     <p class="text-base-content/60 text-sm">{{ $t('Send as Authorization: Bearer fbt_…') }}</p>
     <form class="flex flex-col gap-2" novalidate @submit.prevent="create()">
       <div class="flex items-start gap-2">

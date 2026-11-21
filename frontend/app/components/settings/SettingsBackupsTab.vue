@@ -1,5 +1,5 @@
 <template>
-  <div class="flex max-w-3xl flex-col gap-5">
+  <div class="flex flex-col gap-5">
     <Section :title="$t('Back up')">
       <div class="flex flex-wrap gap-2">
         <a href="/api/backup/download" class="btn btn-primary btn-sm"><Icon name="fa6-solid:download" size="12" /> {{ $t('Download a backup') }}</a>

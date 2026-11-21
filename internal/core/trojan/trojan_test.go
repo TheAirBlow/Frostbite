@@ -1,6 +1,7 @@
 package trojan
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -86,28 +87,27 @@ func TestRenderSiteSettings(t *testing.T) {
 
 func TestRenderRules(t *testing.T) {
 	d := daemon(spec.Options{TJDest: "127.0.0.1:80"})
-	d.DNS = spec.DNS{Servers: []string{"1.1.1.1", "https://dns.example/dns-query", "9.9.9.9:5353"}, Strategy: "ipv4_only"}
+	d.Inbounds[0].Sniffing.Enabled = true
+	d.DNS = spec.DNS{Servers: []string{"1.1.1.1", "https://dns.example/dns-query"}, Strategy: "ipv4_only"}
 	d.Rules = []spec.Rule{
 		{GeoSite: []string{"category-ads-all"}, Outbound: "block"},
+		{Protocol: []string{"bittorrent"}, Outbound: "block"},
 		{Domain: []string{"a.example"}, Outbound: "warp"},
-		{IPCIDR: []string{"10.0.0.0/8"}, Outbound: "block"},
 	}
-	cfg, _ := render(t, d)
-	if len(cfg.Rules) != 1 || cfg.Rules[0].IPCIDR[0] != "10.0.0.0/8" {
-		t.Fatalf("rules: %+v", cfg.Rules)
-	}
-	if strings.Join(cfg.DNS.Servers, " ") != "1.1.1.1:53 9.9.9.9:5353" || cfg.DNS.Strategy != "ipv4_only" {
-		t.Fatalf("dns: %+v", cfg.DNS)
-	}
-	for _, o := range cfg.Outbounds {
-		if o.Kind == spec.OutWarp {
-			t.Fatal("warp outbound kept")
-		}
-	}
-
 	d.Final = "warp"
-	if _, err := Render(d); err == nil {
-		t.Fatal("a final outbound the daemon can't use was accepted")
+	cfg, _ := render(t, d)
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, cfg.Egress); err != nil {
+		t.Fatal(err)
+	}
+	egress := compact.String()
+	for _, want := range []string{
+		`{"action":"sniff","inbound":["t1"]}`, `"rule_set":["geosite-category-ads-all"]`, `"protocol":["bittorrent"]`,
+		`"type":"https"`, `"server":"dns.example"`, `"bind_interface":"warp"`, `"final":"warp"`,
+	} {
+		if !strings.Contains(egress, want) {
+			t.Fatalf("egress lacks %s:\n%s", want, egress)
+		}
 	}
 }
 

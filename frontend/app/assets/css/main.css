@@ -143,6 +143,12 @@ textarea::placeholder,
   @apply bg-base-200 border-base-300 rounded-box border;
 }
 
+/* daisyUI's ghost badge fills with base-200 too, so on a card it reads as bare text */
+.badge-ghost {
+  background-color: color-mix(in oklab, var(--color-base-content) 8%, var(--color-base-200));
+  border-color: color-mix(in oklab, var(--color-base-content) 10%, var(--color-base-200));
+}
+
 /* a surface nested in another surface needs its own tone, or the inner edge disappears */
 .surface .surface {
   background-color: color-mix(in oklab, var(--color-base-content) 5%, var(--color-base-200));

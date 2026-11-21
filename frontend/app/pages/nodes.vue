@@ -5,8 +5,8 @@
     </PageHeader>
 
     <Skeleton v-if="shown" :rows="3" :height="190" />
-    <div v-else-if="nodes?.length" class="grid gap-4 xl:grid-cols-2">
-      <NodeCard v-for="n in nodes" :key="n.id" :node="n" @add-daemon="addFor = n" @logs="logsFor = $event" @preview="previewFor = $event" @changed="refresh" />
+    <div v-else-if="nodes?.length" class="gap-4 xl:columns-2">
+      <NodeCard v-for="n in nodes" :key="n.id" class="mb-4 break-inside-avoid" :node="n" @add-daemon="addFor = n" @logs="logsFor = $event" @preview="previewFor = $event" @changed="refresh" />
     </div>
     <div v-else class="surface">
       <EmptyState icon="fa6-solid:server" :title="$t('No nodes yet')" text="Add your first server.">

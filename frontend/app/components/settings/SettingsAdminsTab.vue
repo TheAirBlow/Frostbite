@@ -1,5 +1,5 @@
 <template>
-  <div class="flex max-w-3xl flex-col gap-4">
+  <div class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-2">
       <p class="text-base-content/60 text-sm"><b>{{ $t('Owners') }}</b> {{ $t('can do everything.') }} <b>{{ $t('Admins') }}</b> {{ $t('manage servers and users.') }} <b>{{ $t('Resellers') }}</b> {{ $t('only see and manage their own users, within a quota.') }} <b>{{ $t('Node admins') }}</b> {{ $t('run the nodes they are given and the users on them.') }}</p>
       <button class="btn btn-sm btn-primary shrink-0" @click="edit = blank()"><Icon name="fa6-solid:plus" size="12" /> {{ $t('Add') }}</button>

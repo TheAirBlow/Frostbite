@@ -32,20 +32,3 @@ func listenControl(reusePort, fastOpen bool) func(network, address string, c sys
 		return serr
 	}
 }
-
-// bindControl ties an outgoing socket to a network interface.
-func bindControl(iface string) func(network, address string, c syscall.RawConn) error {
-	if iface == "" {
-		return nil
-	}
-	return func(_, _ string, c syscall.RawConn) error {
-		var serr error
-		err := c.Control(func(fd uintptr) {
-			serr = unix.BindToDevice(int(fd), iface)
-		})
-		if err != nil {
-			return err
-		}
-		return serr
-	}
-}

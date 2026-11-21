@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col items-center gap-3 px-6 py-14 text-center">
+  <div class="flex flex-col items-center gap-3 px-6 text-center" :class="compact ? 'py-6' : 'py-14'">
     <span class="bg-base-300/60 text-base-content/50 grid size-14 place-items-center rounded-2xl"><Icon :name="icon" size="24" /></span>
     <div>
       <p class="font-display text-lg font-semibold">{{ t(title) }}</p>
@@ -10,6 +10,6 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{ icon?: string, title: string, text?: string }>(), { icon: 'fa6-solid:snowflake', text: '' })
+withDefaults(defineProps<{ icon?: string, title: string, text?: string, compact?: boolean }>(), { icon: 'fa6-solid:snowflake', text: '' })
 const { t } = useT()
 </script>

@@ -16,6 +16,7 @@ func init() {
 			Protocols:  []string{spec.ProtoMTProto},
 			Transports: []string{spec.TransportTCP},
 			Securities: []string{spec.SecurityNone},
+			Outbounds:  []string{spec.OutDirect, spec.OutBlock, spec.OutProxy, spec.OutWarp},
 			HotUsers:   true,
 		},
 		Render: Render,

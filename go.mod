@@ -4,7 +4,6 @@ go 1.26.0
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.9
-	github.com/caddyserver/forwardproxy v0.0.0-00010101000000-000000000000
 	github.com/coder/websocket v1.8.15
 	github.com/go-acme/lego/v4 v4.35.2
 	github.com/google/uuid v1.6.0
@@ -149,7 +148,7 @@ require (
 	github.com/pion/stun/v3 v3.1.2 // indirect
 	github.com/pion/turn/v5 v5.0.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/theairblow/turnable v0.7.4
+	github.com/theairblow/turnable v0.8.2
 	github.com/useflyent/fhttp v0.0.0-20211004035111-333f430cfbbf // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xtaci/kcp-go/v5 v5.6.72 // indirect
@@ -340,5 +339,3 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
-
-replace github.com/caddyserver/forwardproxy => github.com/klzgrad/forwardproxy v0.0.0-20261022172731-e747854e7874

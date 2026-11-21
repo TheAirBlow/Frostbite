@@ -42,7 +42,7 @@ import (
 	"frostbite/internal/spec"
 )
 
-func writeCert(t *testing.T, dir, name string) (cert, key string) {
+func writeCert(t testing.TB, dir, name string) (cert, key string) {
 	t.Helper()
 	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	tpl := &x509.Certificate{
@@ -57,7 +57,7 @@ func writeCert(t *testing.T, dir, name string) (cert, key string) {
 	return cert, key
 }
 
-func freePort(t *testing.T) int {
+func freePort(t testing.TB) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -67,7 +67,7 @@ func freePort(t *testing.T) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-func echoServer(t *testing.T) string {
+func echoServer(t testing.TB) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -86,7 +86,7 @@ func echoServer(t *testing.T) string {
 	return l.Addr().String()
 }
 
-func udpEcho(t *testing.T) string {
+func udpEcho(t testing.TB) string {
 	t.Helper()
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -141,7 +141,7 @@ type fixture struct {
 	dir  string
 }
 
-func newFixture(t *testing.T, tune func(*spec.Inbound)) *fixture {
+func newFixture(t testing.TB, tune func(*spec.Inbound)) *fixture {
 	t.Helper()
 	f := &fixture{rt: New(), echo: echoServer(t), dir: t.TempDir()}
 	t.Cleanup(func() { f.rt.Close() })
@@ -163,7 +163,7 @@ func newFixture(t *testing.T, tune func(*spec.Inbound)) *fixture {
 	return f
 }
 
-func (f *fixture) apply(t *testing.T) {
+func (f *fixture) apply(t testing.TB) {
 	t.Helper()
 	if err := f.d.Validate(); err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func header(password string, cmd byte, dst string) []byte {
 	return append(b, '\r', '\n')
 }
 
-func (f *fixture) dialTLS(t *testing.T, cfg *tls.Config) *tls.Conn {
+func (f *fixture) dialTLS(t testing.TB, cfg *tls.Config) *tls.Conn {
 	t.Helper()
 	if cfg == nil {
 		cfg = &tls.Config{}
@@ -210,7 +210,7 @@ func (f *fixture) dialTLS(t *testing.T, cfg *tls.Config) *tls.Conn {
 }
 
 // connect opens a trojan tunnel to dst, sending payload together with the request as real clients do.
-func (f *fixture) connect(t *testing.T, password, dst string, payload []byte) *tls.Conn {
+func (f *fixture) connect(t testing.TB, password, dst string, payload []byte) *tls.Conn {
 	t.Helper()
 	c := f.dialTLS(t, nil)
 	if _, err := c.Write(append(header(password, cmdConnect, dst), payload...)); err != nil {
@@ -251,6 +251,8 @@ func TestTunnelCountsTraffic(t *testing.T) {
 	fmt.Fprint(c, "again")
 	expectEcho(t, c, "again")
 
+	// the last write is booked just after the client could read it
+	time.Sleep(50 * time.Millisecond)
 	st, _ := f.rt.Stats(context.Background())
 	if ips := st.Online["u1"]; len(ips) != 1 || ips[0] != "127.0.0.1" {
 		t.Fatalf("online: %v", st.Online)
@@ -657,6 +659,29 @@ func TestMuxCool(t *testing.T) {
 		break
 	}
 
+	// a large answer comes back split into frames Xray accepts
+	big := bytes.Repeat([]byte("0123456789"), 3000)
+	frames := coolFrame(4, coolNew, coolOptData, tcp, big[:coolChunk])
+	frames = append(frames, coolFrame(4, coolKeep, coolOptData, nil, big[coolChunk:2*coolChunk])...)
+	frames = append(frames, coolFrame(4, coolKeep, coolOptData, nil, big[2*coolChunk:])...)
+	if _, err := c.Write(frames); err != nil {
+		t.Fatal(err)
+	}
+	var back []byte
+	for len(back) < len(big) {
+		id, status, _, data := readCool(t, c)
+		if id != 4 {
+			continue
+		}
+		if status != coolKeep || len(data) > coolChunk {
+			t.Fatalf("big answer: status %d, %d bytes in a frame", status, len(data))
+		}
+		back = append(back, data...)
+	}
+	if !bytes.Equal(back, big) {
+		t.Fatal("big answer differs")
+	}
+
 	if _, err := c.Write(coolFrame(1, coolEnd, 0, nil, nil)); err != nil {
 		t.Fatal(err)
 	}
@@ -855,4 +880,121 @@ func TestRenamedInboundKeepsItsPort(t *testing.T) {
 	f.d.Inbounds[0].Tag = "tj-renamed"
 	f.apply(t)
 	expectEcho(t, f.connect(t, "pw1", f.echo, []byte("hello")), "hello")
+}
+
+func TestProxyOutbound(t *testing.T) {
+	exit := newFixture(t, nil)
+	host, port, _ := net.SplitHostPort(exit.addr)
+	p, _ := strconv.Atoi(port)
+	f := newFixture(t, nil)
+	f.d.Outbounds = append(f.d.Outbounds, spec.Outbound{Tag: "chain", Kind: spec.OutProxy, Upstream: &spec.Upstream{
+		Protocol: spec.ProtoTrojan, Address: host, Port: p, Password: "pw1",
+		Security: spec.Security{Type: spec.SecurityTLS, SNI: "localhost", Insecure: true},
+	}})
+	f.d.Final = "chain"
+	f.apply(t)
+
+	c := f.connect(t, "pw1", f.echo, []byte("through the chain"))
+	expectEcho(t, c, "through the chain")
+	time.Sleep(50 * time.Millisecond)
+	if st, _ := exit.rt.Stats(context.Background()); st.Users["u1"].Up == 0 {
+		t.Fatalf("the exit saw nothing: %+v", st)
+	}
+}
+
+// bannerServer greets every connection before it echoes, as SSH and SMTP servers speak first.
+func bannerServer(t testing.TB) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() { defer c.Close(); fmt.Fprint(c, "banner\n"); _, _ = io.Copy(c, c) }()
+		}
+	}()
+	return l.Addr().String()
+}
+
+// Sniffing waits out its timeout when the target speaks first, and the tunnel must carry on after it.
+func TestSniffingServerFirst(t *testing.T) {
+	f := newFixture(t, func(in *spec.Inbound) { in.Sniffing.Enabled = true })
+	banner := bannerServer(t)
+
+	c := f.connect(t, "pw1", banner, nil)
+	expectEcho(t, c, "banner\n")
+	fmt.Fprint(c, "plain")
+	expectEcho(t, c, "plain")
+
+	m := f.connect(t, "pw1", muxCoolHost+":9527", nil)
+	_ = m.SetDeadline(time.Now().Add(10 * time.Second))
+	ap := netip.MustParseAddrPort(banner)
+	ip := ap.Addr().As4()
+	tcp := append(binary.BigEndian.AppendUint16([]byte{coolTCP}, ap.Port()), 0x01)
+	tcp = append(tcp, ip[:]...)
+	if _, err := m.Write(coolFrame(1, coolNew, 0, tcp, nil)); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	for got != "banner\n" {
+		_, status, _, data := readCool(t, m)
+		if status != coolKeep {
+			t.Fatalf("status %d before the banner", status)
+		}
+		got += string(data)
+	}
+	if _, err := m.Write(coolFrame(1, coolKeep, coolOptData, nil, []byte("muxed"))); err != nil {
+		t.Fatal(err)
+	}
+	if _, status, _, data := readCool(t, m); status != coolKeep || string(data) != "muxed" {
+		t.Fatalf("after the sniff: status %d, %q", status, data)
+	}
+}
+
+// brokenEgress needs a rule set nobody serves, so it can't start.
+const brokenEgress = `{"outbounds":[{"type":"direct","tag":"direct"}],"route":{
+	"rule_set":[{"type":"remote","tag":"x","format":"source","url":"http://127.0.0.1:1/x.json"}],
+	"rules":[{"rule_set":["x"],"action":"reject"}]}}`
+
+func TestSiteStaysUpWithoutTheEgress(t *testing.T) {
+	s := newSite(t, "the real site")
+	f := &fixture{rt: New(), echo: echoServer(t), dir: t.TempDir()}
+	t.Cleanup(func() { f.rt.Close() })
+	cert, key := writeCert(t, f.dir, "localhost")
+	p := freePort(t)
+	f.addr = net.JoinHostPort("127.0.0.1", strconv.Itoa(p))
+	f.d = spec.Daemon{Kind: "trojan", Final: "direct", Inbounds: []spec.Inbound{{
+		Tag: "tj", Protocol: spec.ProtoTrojan, Listen: "127.0.0.1", Port: p,
+		Security: spec.Security{Type: spec.SecurityTLS, CertPath: cert, KeyPath: key},
+		Options:  spec.Options{TJDest: s.addr()}, Users: []spec.User{{Name: "u1", Password: "pw1"}},
+	}}}
+	rendered, err := coretrojan.Render(f.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg coretrojan.Config
+	_ = json.Unmarshal(rendered, &cfg)
+	cfg.Egress = json.RawMessage(brokenEgress)
+	rendered, _ = json.Marshal(cfg)
+	if err := f.rt.Apply(context.Background(), f.d, rendered); err == nil {
+		t.Fatal("a daemon whose egress can't start reported nothing")
+	}
+
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	resp, err := client.Get("https://" + f.addr + "/")
+	if err != nil {
+		t.Fatalf("the site went down with the egress: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "the real site" {
+		t.Fatalf("got %q", body)
+	}
+	expectClosed(t, f.connect(t, "pw1", f.echo, []byte("hello")))
 }

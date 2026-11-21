@@ -93,4 +93,8 @@ export default {
   'portal.msgExpired': 'This subscription has expired. Contact support to renew it.',
   'portal.msgLimited': 'The traffic limit was reached.',
   'portal.language': 'Language',
+  '{n} inbounds_one': '{n} inbound',
+  '{n} inbounds_other': '{n} inbounds',
+  '{n} hosts_one': '{n} host',
+  '{n} hosts_other': '{n} hosts',
 }

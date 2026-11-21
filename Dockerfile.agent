@@ -5,31 +5,34 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev
+ARG SINGBOX_VERSION=1.14.3
 ENV AGENT_LDFLAGS="-s -w -X frostbite/internal/agent.Version=${VERSION}"
+# the native daemons route through embedded sing-box, so they need its outbounds too
+ENV EGRESS_LDFLAGS="${AGENT_LDFLAGS} -X github.com/sagernet/sing-box/constant.Version=${SINGBOX_VERSION}"
+ENV EGRESS_TAGS="with_quic,with_utls,with_gvisor,with_wireguard"
 
 FROM build AS build-xray
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-xray
 
 FROM build AS build-singbox
-ARG SINGBOX_VERSION=1.14.3
 ARG SINGBOX_TAGS="with_quic,with_utls,with_gvisor,with_wireguard,with_acme,with_clash_api"
 RUN CGO_ENABLED=0 go build -trimpath -tags "${SINGBOX_TAGS}" \
-    -ldflags="${AGENT_LDFLAGS} -X github.com/sagernet/sing-box/constant.Version=${SINGBOX_VERSION}" -o /out/agent ./cmd/agent-singbox
+    -ldflags="${EGRESS_LDFLAGS}" -o /out/agent ./cmd/agent-singbox
 
 FROM build AS build-edge
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-edge
 
 FROM build AS build-mtproto
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-mtproto
+RUN CGO_ENABLED=0 go build -trimpath -tags "${EGRESS_TAGS}" -ldflags="${EGRESS_LDFLAGS}" -o /out/agent ./cmd/agent-mtproto
 
 FROM build AS build-turnable
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-turnable
 
 FROM build AS build-naive
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-naive
+RUN CGO_ENABLED=0 go build -trimpath -tags "${EGRESS_TAGS}" -ldflags="${EGRESS_LDFLAGS}" -o /out/agent ./cmd/agent-naive
 
 FROM build AS build-trojan
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="${AGENT_LDFLAGS}" -o /out/agent ./cmd/agent-trojan
+RUN CGO_ENABLED=0 go build -trimpath -tags "${EGRESS_TAGS}" -ldflags="${EGRESS_LDFLAGS}" -o /out/agent ./cmd/agent-trojan
 
 FROM alpine:3.22 AS fetch-xray
 ARG XRAY_VERSION=v26.3.27

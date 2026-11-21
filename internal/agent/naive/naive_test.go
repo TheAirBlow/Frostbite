@@ -33,6 +33,7 @@ import (
 	"github.com/sagernet/sing/common/uot"
 	"golang.org/x/net/http2"
 
+	"frostbite/internal/agent/naive/gate"
 	corenaive "frostbite/internal/core/naive"
 	"frostbite/internal/spec"
 )
@@ -134,7 +135,7 @@ func newFixture(t *testing.T, tune func(*spec.Inbound)) *fixture {
 	}
 	f.d = spec.Daemon{
 		Kind: "naive", Inbounds: []spec.Inbound{in}, Outbounds: []spec.Outbound{{Tag: "direct", Kind: spec.OutDirect}}, Final: "direct",
-		// the echo server is on loopback, which forwardproxy refuses unless a rule says otherwise
+		// the echo server is on loopback, which the daemon refuses unless a rule says otherwise
 		Rules: []spec.Rule{{IPCIDR: []string{"127.0.0.1/32"}, Outbound: "direct"}},
 	}
 	f.apply(t)
@@ -773,4 +774,97 @@ func TestUDPToPrivateAddressesIsDropped(t *testing.T) {
 	if n, err := conn.Read(make([]byte, 8)); err == nil {
 		t.Errorf("got an answer of %d bytes from a private address", n)
 	}
+}
+
+func TestPlainHTTPProxy(t *testing.T) {
+	f := newFixture(t, nil)
+	target := newSite(t)
+	proxyURL, _ := url.Parse("https://u1:pw1@" + f.addr)
+	c := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL), TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	resp, err := c.Get(target.URL + "/page")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if b, _ := io.ReadAll(resp.Body); string(b) != "the real site" {
+		t.Fatalf("got %q", b)
+	}
+	if h := target.last(); h.Get("Proxy-Authorization") != "" {
+		t.Fatalf("credentials reached the target: %v", h)
+	}
+}
+
+// A target that speaks first makes sniffing wait out its timeout, which must leave an HTTP/2 tunnel working.
+func TestH2SniffingServerFirst(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() { defer c.Close(); fmt.Fprint(c, "banner\n"); io.Copy(c, c) }()
+		}
+	}()
+	f := newFixture(t, func(in *spec.Inbound) { in.Sniffing.Enabled = true })
+	f.echo = l.Addr().String()
+	w, r := f.tunnelH2(t, "u1", "pw1")
+	got := make([]byte, len("banner\n"))
+	if _, err := io.ReadFull(r, got); err != nil || string(got) != "banner\n" {
+		t.Fatalf("banner: %q %v", got, err)
+	}
+	if err := echoH2(w, r, "after the sniff"); err != nil {
+		t.Fatalf("the tunnel broke when sniffing gave up: %v\n%s", err, f.rt.Logs(10))
+	}
+
+	c, br := f.tunnel(t, "u1", "pw1")
+	c.SetDeadline(time.Now().Add(5 * time.Second))
+	if line, err := br.ReadString('\n'); err != nil || line != "banner\n" {
+		t.Fatalf("http/1.1 banner: %q %v", line, err)
+	}
+	if err := echoOnce(c, br, "after the sniff"); err != nil {
+		t.Fatalf("the http/1.1 tunnel broke when sniffing gave up: %v", err)
+	}
+}
+
+func TestConnectWithoutCredentialsSeesTheSite(t *testing.T) {
+	s := newSite(t)
+	f := newFixture(t, func(in *spec.Inbound) { in.Options.NaiveDest = strings.TrimPrefix(s.URL, "http://") })
+	c, err := tls.Dial("tcp", f.addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"http/1.1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	fmt.Fprintf(c, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", f.echo, f.echo)
+	resp, err := http.ReadResponse(bufio.NewReader(c), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "the real site" || resp.Header.Get("Proxy-Authenticate") != "" {
+		t.Errorf("a CONNECT without credentials met a proxy: %s %v %q", resp.Status, resp.Header, body)
+	}
+}
+
+func TestSiteStaysUpWithoutTheEgress(t *testing.T) {
+	s := newSite(t)
+	f := newFixture(t, func(in *spec.Inbound) { in.Options.NaiveDest = strings.TrimPrefix(s.URL, "http://") })
+	// a rule set nobody serves keeps the egress from starting
+	f.d.Rules = append(f.d.Rules, spec.Rule{GeoSite: []string{"x"}, Outbound: "direct"})
+	rendered, err := corenaive.Render(f.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered = bytes.ReplaceAll(rendered, []byte("https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-x.srs"), []byte("http://127.0.0.1:1/x.srs"))
+	if err := f.rt.Apply(context.Background(), f.d, rendered); err == nil {
+		t.Fatal("a daemon whose egress can't start reported nothing")
+	}
+	if got := f.get(t); got != "the real site" {
+		t.Fatalf("the site went down with the egress: %q", got)
+	}
+	gate.CloseEgress()
 }

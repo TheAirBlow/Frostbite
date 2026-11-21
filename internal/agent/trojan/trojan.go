@@ -18,11 +18,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"frostbite/internal/agent/egress"
 	"frostbite/internal/agent/logs"
 	coretrojan "frostbite/internal/core/trojan"
 	"frostbite/internal/link"
 	"frostbite/internal/spec"
 )
+
+// Version is the version of the trojan server, reported to the panel as its core version.
+const Version = "1.0.1"
 
 // Runtime is the trojan daemon.
 type Runtime struct {
@@ -35,7 +39,7 @@ type Runtime struct {
 	want    []byte // the config the panel asked for, kept for reloads
 	users   map[string]map[string]string
 
-	router atomic.Pointer[router]
+	egress *egress.Egress
 
 	usageMu sync.Mutex
 	usage   map[string]*counter
@@ -58,6 +62,7 @@ func New() *Runtime {
 	r := &Runtime{logs: logs.NewRing(2000), servers: map[string]*server{}, users: map[string]map[string]string{},
 		usage: map[string]*counter{}, live: map[*session]struct{}{}}
 	r.level.Store(levelInfo)
+	r.egress = egress.New(func(level, msg string) { r.logf(parseLevel(level), "egress: %s", msg) })
 	return r
 }
 
@@ -65,7 +70,7 @@ func New() *Runtime {
 func (r *Runtime) Kind() string { return "trojan" }
 
 // CoreVersion identifies the server.
-func (r *Runtime) CoreVersion() string { return "frostbite-trojan 1" }
+func (r *Runtime) CoreVersion() string { return "frostbite-trojan " + Version }
 
 // Log levels, in order.
 const (
@@ -142,15 +147,12 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, rendered []byte) error
 	if err := json.Unmarshal(rendered, &cfg); err != nil {
 		return fmt.Errorf("bad config: %w", err)
 	}
-	rt, err := newRouter(cfg)
-	if err != nil {
-		return err
-	}
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.level.Store(parseLevel(cfg.LogLevel))
-	r.router.Store(rt)
+	// the way out starts before a listener opens and keeps running when only users change. Listeners open even when
+	// it can't start, so the site stays up while it retries.
+	egressErr := r.egress.Apply(egress.Config(cfg.Egress))
 
 	// users go first, so one added together with a new inbound can connect the moment it opens
 	users := usersOf(d)
@@ -165,11 +167,11 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, rendered []byte) error
 	r.users = users
 
 	r.want = rendered
-	err = r.apply(cfg, false)
+	err := r.apply(cfg, false)
 	if err == nil {
 		r.cfg = rendered
 	}
-	return err
+	return errors.Join(err, egressErr)
 }
 
 // apply opens, updates and closes listeners. A listener that fails keeps the rest going. reread loads certificate files
@@ -352,7 +354,7 @@ func (r *Runtime) Close() error {
 		r.stopServer(s)
 	}
 	r.cfg, r.want = nil, nil
-	return nil
+	return r.egress.Close()
 }
 
 // Logs returns the tail of the log.

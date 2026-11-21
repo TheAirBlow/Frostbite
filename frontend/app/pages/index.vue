@@ -18,7 +18,10 @@
 
     <div class="mt-4 grid gap-4 xl:grid-cols-3">
       <Section :title="t('dash.traffic')" :class="statusSlices.length > 1 ? 'xl:col-span-2' : 'xl:col-span-3'">
-        <p v-if="!shown && series.length === 0" class="text-base-content/60 text-sm">{{ $t('No traffic yet') }}</p>
+        <div v-if="!shown && series.length === 0" class="text-base-content/50 flex h-32 flex-col items-center justify-center gap-2 text-sm sm:h-60">
+          <Icon name="fa6-solid:chart-area" size="22" />
+          {{ $t('No traffic yet') }}
+        </div>
         <div v-else class="relative h-60">
           <Transition name="fade">
             <div v-if="shown" class="skeleton absolute inset-0" />
@@ -29,7 +32,7 @@
 
       <Section v-if="statusSlices.length > 1" :title="t('dash.byStatus')">
         <div class="flex flex-col items-center gap-3">
-          <DonutChart :data="statusSlices.map(s => s.value)" :categories="statusCategories" :radius="70" :height="190" :duration="0" />
+          <DonutChart :data="statusSlices.map(s => s.value)" :categories="statusCategories" :radius="70" :height="190" :duration="0" hide-legend />
           <div class="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
             <span v-for="s in statusSlices" :key="s.key" class="flex items-center gap-1.5">
               <span class="size-2 rounded-full" :style="{ background: s.color }" /> {{ t(`status.${s.key}`) }} <b>{{ s.value }}</b>
@@ -39,36 +42,50 @@
       </Section>
     </div>
 
-    <div class="mt-4 grid gap-4 xl:grid-cols-3">
-      <Section :title="t('dash.nodes')" :class="data?.traffic.by_node.length || data?.top.length ? 'xl:col-span-2' : 'xl:col-span-3'">
-        <template #actions>
-          <NuxtLink to="/nodes" class="btn btn-ghost btn-xs">{{ t('dash.manage') }} <Icon name="fa6-solid:arrow-right" size="11" /></NuxtLink>
-        </template>
-        <div v-if="nodes?.length" class="divide-base-300 -my-3 flex flex-col divide-y">
-          <div v-for="n in nodes" :key="n.id" class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
-            <span class="text-xl">{{ flag(n.country) }}</span>
-            <div class="min-w-32 flex-1">
-              <p class="font-medium">{{ n.name }}</p>
-              <p class="text-base-content/50 font-mono text-xs">{{ n.address }}</p>
-            </div>
-            <div class="flex items-center gap-3">
-              <span v-for="d in n.daemons" :key="d.id" class="flex items-center gap-1.5 text-xs" :title="d.name">
-                <Dot :tone="daemonTone(d)" :pulse="d.live.online" /> {{ coreLabels[d.kind] ?? d.kind }}
-              </span>
-              <span v-if="!n.daemons.length" class="text-base-content/50 text-xs">{{ $t('no daemons') }}</span>
-            </div>
-            <div v-if="metricsOf(n)" class="flex w-full items-center gap-4 text-xs sm:w-auto">
-              <span class="text-base-content/60 w-20">CPU <b class="text-base-content">{{ metricsOf(n)!.cpu.toFixed(0) }}%</b></span>
-              <span class="text-base-content/60 w-24">RAM <b class="text-base-content">{{ percent(metricsOf(n)!.mem_used, metricsOf(n)!.mem_total) }}%</b></span>
-              <span class="text-base-content/60">↓ <b class="text-base-content">{{ formatSpeed(metricsOf(n)!.net_down) }}</b> ↑ <b class="text-base-content">{{ formatSpeed(metricsOf(n)!.net_up) }}</b></span>
-            </div>
-          </div>
-        </div>
-        <EmptyState v-else icon="fa6-solid:server" :title="$t('No nodes yet')" text="A node is a server your users connect to.">
-          <button class="btn btn-soft btn-primary btn-sm" @click="side.open('node')">{{ $t('Add a node') }}</button>
-        </EmptyState>
-      </Section>
+    <Section :title="t('dash.nodes')" class="mt-4">
+      <template #actions>
+        <NuxtLink to="/nodes" class="btn btn-xs">{{ t('dash.manage') }} <Icon name="fa6-solid:arrow-right" size="11" /></NuxtLink>
+      </template>
+      <div v-if="nodes?.length" class="-mx-2 -my-3 overflow-x-auto">
+        <table class="table text-xs whitespace-nowrap tabular-nums [&_td]:px-2">
+          <tbody>
+            <tr v-for="n in nodes" :key="n.id" class="border-base-300">
+              <td class="w-0 text-xl">{{ flag(n.country) }}</td>
+              <td class="w-full max-w-0">
+                <p class="truncate text-sm font-medium">{{ n.name }}</p>
+                <p class="text-base-content/50 truncate font-mono">{{ n.address }}</p>
+                <p v-if="metricsOf(n)" class="text-base-content/60 mt-1 sm:hidden">CPU <b class="text-base-content">{{ metricsOf(n)!.cpu.toFixed(0) }}%</b> · RAM <b class="text-base-content">{{ percent(metricsOf(n)!.mem_used, metricsOf(n)!.mem_total) }}%</b> · ↓ <b class="text-base-content">{{ formatSpeed(metricsOf(n)!.net_down) }}</b> ↑ <b class="text-base-content">{{ formatSpeed(metricsOf(n)!.net_up) }}</b></p>
+              </td>
+              <td class="max-sm:hidden">
+                <div class="flex items-center justify-end gap-3">
+                  <span v-for="d in n.daemons" :key="d.id" class="flex items-center gap-1.5" :title="d.name">
+                    <Dot :tone="daemonTone(d)" :pulse="d.live.online" /> {{ coreLabels[d.kind] ?? d.kind }}
+                  </span>
+                  <span v-if="!n.daemons.length" class="text-base-content/50">{{ $t('no daemons') }}</span>
+                </div>
+              </td>
+              <template v-if="metricsOf(n)">
+                <td class="text-base-content/60 text-right max-sm:hidden">CPU <b class="text-base-content">{{ metricsOf(n)!.cpu.toFixed(0) }}%</b></td>
+                <td class="text-base-content/60 text-right max-sm:hidden">RAM <b class="text-base-content">{{ percent(metricsOf(n)!.mem_used, metricsOf(n)!.mem_total) }}%</b></td>
+                <td class="text-base-content/60 text-right max-sm:hidden">↓ <b class="text-base-content">{{ formatSpeed(metricsOf(n)!.net_down) }}</b></td>
+                <td class="text-base-content/60 text-right max-sm:hidden">↑ <b class="text-base-content">{{ formatSpeed(metricsOf(n)!.net_up) }}</b></td>
+              </template>
+              <td v-else colspan="4" class="max-sm:hidden" />
+              <td class="w-0 sm:hidden">
+                <div class="flex gap-1">
+                  <Dot v-for="d in n.daemons" :key="d.id" :tone="daemonTone(d)" :pulse="d.live.online" :title="`${d.name}: ${coreLabels[d.kind] ?? d.kind}`" />
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <EmptyState v-else icon="fa6-solid:server" :title="$t('No nodes yet')" text="A node is a server your users connect to.">
+        <button class="btn btn-soft btn-primary btn-sm" @click="side.open('node')">{{ $t('Add a node') }}</button>
+      </EmptyState>
+    </Section>
 
+    <div v-if="data?.traffic.by_node.length || data?.top.length" class="mt-4 grid gap-4" :class="{ 'lg:grid-cols-2': data?.traffic.by_node.length && data?.top.length }">
       <Section v-if="data?.traffic.by_node.length" :title="t('dash.byNode')">
         <div class="flex flex-col gap-2.5">
           <div v-for="n in byNode" :key="n.id">

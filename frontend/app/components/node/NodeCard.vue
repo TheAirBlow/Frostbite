@@ -5,7 +5,7 @@
       <div class="min-w-0 flex-1">
         <h2 class="font-display truncate text-xl font-semibold">{{ node.name }}</h2>
         <p class="text-base-content/60 flex items-center gap-1 font-mono text-xs">{{ node.address }} <CopyButton :value="node.address" /></p>
-        <div class="mt-1.5 flex flex-wrap gap-1.5">
+        <div v-if="!node.enabled || node.traffic_multiplier !== 1 || node.tags.length" class="mt-1.5 flex flex-wrap gap-1.5">
           <span v-if="!node.enabled" class="badge badge-sm badge-neutral">{{ $t('disabled') }}</span>
           <span v-if="node.traffic_multiplier !== 1" class="badge badge-sm badge-warning badge-soft" :title="$t('Traffic is multiplied by this before it counts against users')">×{{ node.traffic_multiplier }}</span>
           <span v-for="t in node.tags" :key="t" class="badge badge-sm badge-ghost">{{ t }}</span>

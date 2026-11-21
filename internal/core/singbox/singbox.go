@@ -37,12 +37,6 @@ func init() {
 func Render(d spec.Daemon) ([]byte, error) {
 	cfg := map[string]any{"log": map[string]any{"level": logLevel(d.Log.Level), "timestamp": true}}
 
-	resolver := ""
-	if dns, tag := renderDNS(d.DNS); dns != nil {
-		cfg["dns"] = dns
-		resolver = tag
-	}
-
 	var inbounds, endpoints []any
 	var sniffTags []string
 	for _, in := range d.Inbounds {
@@ -70,6 +64,42 @@ func Render(d spec.Daemon) ([]byte, error) {
 		}
 	}
 	cfg["inbounds"] = inbounds
+	if err := routing(cfg, d, endpoints, sniffTags); err != nil {
+		return nil, err
+	}
+
+	if err := core.ApplyPatch(cfg, d.RawPatch); err != nil {
+		return nil, err
+	}
+	core.Prune(cfg)
+	return json.MarshalIndent(cfg, "", "  ")
+}
+
+// RenderEgress builds a sing-box config with no inbounds that routes, resolves and dials for a native daemon serving
+// d: its DNS, outbounds, rules and the sniffing of every inbound that asks for it. The daemon hands each connection
+// over tagged with the inbound and user it came from.
+func RenderEgress(d spec.Daemon) (map[string]any, error) {
+	cfg := map[string]any{"log": map[string]any{"level": logLevel(d.Log.Level)}}
+	var sniffTags []string
+	for _, in := range d.Inbounds {
+		if in.Sniffing.Enabled {
+			sniffTags = append(sniffTags, in.Tag)
+		}
+	}
+	if err := routing(cfg, d, nil, sniffTags); err != nil {
+		return nil, err
+	}
+	core.Prune(cfg)
+	return cfg, nil
+}
+
+// routing fills in the dns, outbounds, endpoints and route of cfg. endpoints are the ones inbounds already need.
+func routing(cfg map[string]any, d spec.Daemon, endpoints []any, sniffTags []string) error {
+	resolver := ""
+	if dns, tag := renderDNS(d.DNS); dns != nil {
+		cfg["dns"] = dns
+		resolver = tag
+	}
 
 	blocked := map[string]bool{}
 	var outbounds []any
@@ -85,7 +115,7 @@ func Render(d spec.Daemon) ([]byte, error) {
 		}
 		m, err := Outbound(o, resolver, d.DNS.Strategy)
 		if err != nil {
-			return nil, fmt.Errorf("outbound %s: %w", o.Tag, err)
+			return fmt.Errorf("outbound %s: %w", o.Tag, err)
 		}
 		outbounds = append(outbounds, m)
 	}
@@ -124,12 +154,7 @@ func Render(d spec.Daemon) ([]byte, error) {
 		route["rule_set"] = list
 	}
 	cfg["route"] = route
-
-	if err := core.ApplyPatch(cfg, d.RawPatch); err != nil {
-		return nil, err
-	}
-	core.Prune(cfg)
-	return json.MarshalIndent(cfg, "", "  ")
+	return nil
 }
 
 // logLevel maps the neutral level to sing-box's names.

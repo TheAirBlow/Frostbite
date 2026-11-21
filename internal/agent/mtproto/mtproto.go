@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/cipher"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,7 +16,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	M "github.com/sagernet/sing/common/metadata"
+
+	"frostbite/internal/agent/egress"
 	"frostbite/internal/agent/logs"
+	"frostbite/internal/core/singbox"
 	"frostbite/internal/link"
 	"frostbite/internal/spec"
 )
@@ -26,7 +31,7 @@ const (
 	idleTimeout      = 10 * time.Minute
 )
 
-// dcAddrs are Telegram's data centers, reached directly.
+// dcAddrs are Telegram's data centers, reached through the egress like any other destination.
 var dcAddrs = map[int]string{
 	1: "149.154.175.50:443",
 	2: "149.154.167.51:443",
@@ -37,8 +42,9 @@ var dcAddrs = map[int]string{
 
 // Runtime is the mtproto daemon.
 type Runtime struct {
-	logs *logs.Ring
-	dcs  map[int]string // where each data center lives, replaceable for tests
+	logs   *logs.Ring
+	dcs    map[int]string // where each data center lives, replaceable for tests
+	egress *egress.Egress
 
 	mu      sync.Mutex
 	servers map[string]*server
@@ -81,10 +87,12 @@ type session struct {
 
 // New creates a runtime.
 func New() *Runtime {
-	return &Runtime{
+	r := &Runtime{
 		logs: logs.NewRing(1000), dcs: dcAddrs,
 		servers: map[string]*server{}, usage: map[string]*link.Usage{}, live: map[*session]struct{}{},
 	}
+	r.egress = egress.New(func(_, msg string) { r.logf("egress: %s", msg) })
+	return r
 }
 
 // SetHooks registers callbacks for the guard, see agent.Supervised.
@@ -130,6 +138,18 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.last = d
+
+	cfg, err := singbox.RenderEgress(d)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	// the way out keeps running when only users change. Listeners open even when it can't start, so the fake TLS
+	// front stays up while it retries.
+	egressErr := r.egress.Apply(raw)
 
 	type target struct{ addr, mode, domain string }
 	want := map[string]target{}
@@ -185,7 +205,7 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 	if len(failed) > 0 && len(r.servers) == 0 && r.onDown != nil {
 		r.onDown()
 	}
-	return errors.Join(failed...)
+	return errors.Join(append(failed, egressErr)...)
 }
 
 // usersOf decodes the secrets of an inbound's users.
@@ -306,7 +326,11 @@ func (s *server) handle(c net.Conn) {
 	if !ok {
 		addr = s.rt.dcs[2]
 	}
-	up, err := net.DialTimeout("tcp", addr, dialTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	up, err := s.rt.egress.Dial(ctx, egress.Meta{
+		Inbound: s.tag, InboundType: "mtproto", User: label, Source: c.RemoteAddr(), Destination: M.ParseSocksaddr(addr),
+	})
+	cancel()
 	if err != nil {
 		s.rt.logf("could not reach telegram dc %d: %v", dc, err)
 		return
@@ -473,7 +497,7 @@ func (r *Runtime) Close() error {
 	}
 	r.mu.Unlock()
 	r.dropAll()
-	return nil
+	return r.egress.Close()
 }
 
 // frontAddr is where strangers are sent: the cover site, on 443 unless a port is given.

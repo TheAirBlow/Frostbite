@@ -1,39 +1,33 @@
 // Package gate is the Caddy side of the Frostbite naive daemon. It authenticates proxy clients against a user table the
-// agent keeps current over the admin api, counts their traffic and can cut them off, and hands everything else on to the
-// next handler, which serves the real site.
+// agent keeps current, tunnels them through the egress, counts their traffic and can cut them off, and hands everything
+// else on to the next handler, which serves the real site.
 package gate
 
 import (
 	"bufio"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
+	"frostbite/internal/agent/egress"
 )
 
 func init() { caddy.RegisterModule(&Gate{}) }
 
-// Gate lets authenticated proxy requests through to the proxy handler and passes every other request on.
+// Gate tunnels authenticated proxy requests and passes every other request on.
 type Gate struct {
-	// Inbound names the user table this gate checks.
+	// Inbound names the user table this gate checks, and the inbound rules match tunnels by.
 	Inbound string `json:"inbound"`
-	// ProxyRaw is the handler that tunnels requests of authenticated users.
-	ProxyRaw json.RawMessage `json:"proxy,omitempty" caddy:"namespace=http.handlers inline_key=handler"`
-
-	// ACL is who UDP packets may go to, the same rules the proxy handler applies to connections.
-	ACL []ACLRule `json:"acl,omitempty"`
-
-	proxy    caddyhttp.MiddlewareHandler
-	udpRules acl
 }
 
 // CaddyModule returns the module information.
@@ -42,21 +36,6 @@ func (*Gate) CaddyModule() caddy.ModuleInfo {
 		ID:  "http.handlers.frostbite_gate",
 		New: func() caddy.Module { return new(Gate) },
 	}
-}
-
-// Provision loads the proxy handler.
-func (g *Gate) Provision(ctx caddy.Context) error {
-	mod, err := ctx.LoadModule(g, "ProxyRaw")
-	if err != nil {
-		return fmt.Errorf("loading the proxy handler: %w", err)
-	}
-	h, ok := mod.(caddyhttp.MiddlewareHandler)
-	if !ok {
-		return fmt.Errorf("the proxy handler is a %T, not a middleware", mod)
-	}
-	g.proxy = h
-	g.udpRules = newACL(g.ACL)
-	return nil
 }
 
 // Validate makes sure the gate knows what it guards.
@@ -93,12 +72,15 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.
 	r = r.WithContext(ctx)
 	r.Body = &countedBody{ReadCloser: r.Body, t: t}
 	cw := &countedWriter{ResponseWriter: w, t: t}
+	m := egress.Meta{Inbound: g.Inbound, InboundType: "naive", User: name, Source: remoteAddr(r)}
 	if r.Method == http.MethodConnect {
-		if v := uotVersion(r); v != 0 {
-			return g.serveUoT(cw, r, v)
-		}
+		return serveConnect(cw, r, t, m)
 	}
-	return g.proxy.ServeHTTP(cw, r, pass)
+	if !r.URL.IsAbs() {
+		// credentials sent to the site itself, which is no proxy request
+		return pass.ServeHTTP(w, r)
+	}
+	return serveForward(cw, r, m)
 }
 
 // proxyCredentials reads the Basic credentials of a Proxy-Authorization header.
@@ -124,6 +106,15 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
+// remoteAddr is the user's end of the connection, nil when Caddy names it in a way that does not parse.
+func remoteAddr(r *http.Request) net.Addr {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return nil
+	}
+	return net.TCPAddrFromAddrPort(ap)
+}
+
 // tunnel cuts one proxied request off from both ends and counts what passes.
 type tunnel struct {
 	*counter
@@ -146,6 +137,22 @@ func (t *tunnel) kill() {
 	if conn != nil {
 		_ = conn.Close()
 	}
+}
+
+// end closes this tunnel alone. Over HTTP/2 the connection carries other tunnels, which go on.
+func (t *tunnel) end() {
+	t.cancel()
+	_ = t.body.Close()
+}
+
+// localAddr is the server's end of the client's connection.
+func (t *tunnel) localAddr() net.Addr {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.conn == nil {
+		return nil
+	}
+	return t.conn.LocalAddr()
 }
 
 func (t *tunnel) setConn(c net.Conn) {
@@ -226,7 +233,6 @@ func (c *countedConn) CloseWrite() error {
 }
 
 var (
-	_ caddy.Provisioner           = (*Gate)(nil)
 	_ caddy.Validator             = (*Gate)(nil)
 	_ caddyhttp.MiddlewareHandler = (*Gate)(nil)
 )

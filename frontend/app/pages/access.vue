@@ -37,7 +37,7 @@
           <p class="font-display text-xl font-semibold">{{ p.name }}</p>
           <p class="text-2xl font-semibold">{{ p.traffic_limit ? formatBytes(p.traffic_limit, 0) : 'Unlimited' }}</p>
           <ul class="text-base-content/60 text-sm">
-            <li>{{ p.duration_days ? `${p.duration_days} days` : 'Never expires' }}<template v-if="p.start_on_first_use"> {{ $t('· starts at first use') }}</template></li>
+            <li>{{ p.duration_days ? `${p.duration_days} days` : 'Never expires' }}<template v-if="p.start_on_first_use"> · {{ $t('starts at first use') }}</template></li>
             <li v-if="p.reset_strategy !== 'none'">Resets {{ resetLabels[p.reset_strategy]?.toLowerCase() }}</li>
             <li v-if="p.device_limit">{{ p.device_limit }} devices</li>
             <li>{{ p.squad_ids.length }} squad{{ p.squad_ids.length === 1 ? '' : 's' }}</li>

@@ -16,13 +16,3 @@ func listenControl(reusePort, fastOpen bool) func(network, address string, c sys
 		return errors.New("reuse port and TCP Fast Open need Linux")
 	}
 }
-
-// bindControl refuses interface binding, which needs Linux.
-func bindControl(iface string) func(network, address string, c syscall.RawConn) error {
-	if iface == "" {
-		return nil
-	}
-	return func(string, string, syscall.RawConn) error {
-		return errors.New("binding to an interface needs Linux")
-	}
-}

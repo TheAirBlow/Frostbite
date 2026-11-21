@@ -1,5 +1,5 @@
 <template>
-  <div class="flex max-w-3xl flex-col gap-5">
+  <div class="flex flex-col gap-5">
     <Section :title="$t('Theme')">
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
         <button v-for="t in themes" :key="t" class="bg-base-100 border-base-300 hover:border-primary/60 overflow-hidden rounded-xl border text-left transition" :class="{ 'border-primary ring-primary/40 ring-1': colorMode.preference === t }" :data-theme="t" @click="colorMode.preference = t">

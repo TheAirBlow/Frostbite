@@ -4,7 +4,7 @@
       <div class="h-full rounded-full transition-all" :class="color" :style="{ width: unlimited ? '100%' : `${pct}%`, opacity: unlimited ? 0.25 : 1 }" />
     </div>
     <p v-if="!compact" class="text-base-content/60 mt-1 text-xs">
-      {{ formatBytes(used) }}<template v-if="!unlimited"> / {{ formatBytes(limit) }}</template><template v-else> {{ $t('· unlimited') }}</template>
+      {{ formatBytes(used) }}<template v-if="!unlimited"> / {{ formatBytes(limit) }}</template><template v-else><span class="mx-1.5">•</span>{{ $t('unlimited') }}</template>
     </p>
   </div>
 </template>
