@@ -16,14 +16,16 @@ var RemarkPlaceholders = []string{
 	"node", "country", "flag", "country_name", "inbound", "protocol", "transport", "security", "user", "host", "port",
 }
 
-// RouteNamePlaceholders can be used in the name of a Turnable destination.
+// RouteNamePlaceholders can be used in the name of a Turnable destination. Each one may also carry an @ prefix, which
+// takes the value from the inbound the destination leads to. "inbound_remark" is a deprecated alias of {@remark}.
 var RouteNamePlaceholders = append(slices.Clone(RemarkPlaceholders), "remark", "inbound_remark", "route")
 
 // RouteURLVars can be used in the custom link of a Turnable destination.
 var RouteURLVars = append(slices.Clone(RouteNamePlaceholders), "uuid", "password", "name")
 
-// {name} or {name:arg}: the arg is a language for country_name, upper or lower for the rest.
-var placeholder = regexp.MustCompile(`\{(\w*)(?::([\w-]*))?\}`)
+// {name} or {name:arg}: the arg is a language for country_name, upper or lower for the rest. {@name} looks the value
+// up on the inbound a Turnable destination leads to.
+var placeholder = regexp.MustCompile(`\{(@?)(\w*)(?::([\w-]*))?\}`)
 
 // Placeholders holds the values a template fills in, by placeholder name. The flag and country names come from
 // the "country" entry, a two letter code.
@@ -37,7 +39,7 @@ func (p Placeholders) Expand(tpl string) string {
 // ExpandURL fills the placeholders of a link. Everything except host and port is escaped for a URL.
 func (p Placeholders) ExpandURL(tpl string) string {
 	return p.expand(tpl, func(key, v string) string {
-		if key == "host" || key == "port" {
+		if name := strings.TrimPrefix(key, "@"); name == "host" || name == "port" {
 			return v
 		}
 		return url.QueryEscape(v)
@@ -47,22 +49,29 @@ func (p Placeholders) ExpandURL(tpl string) string {
 func (p Placeholders) expand(tpl string, escape func(key, v string) string) string {
 	return placeholder.ReplaceAllStringFunc(tpl, func(m string) string {
 		sub := placeholder.FindStringSubmatch(m)
-		v, ok := p.value(sub[1], sub[2])
+		key := sub[1] + sub[2]
+		v, ok := p.value(key, sub[3])
 		if !ok {
 			return m
 		}
-		return escape(sub[1], v)
+		return escape(key, v)
 	})
 }
 
 func (p Placeholders) value(key, arg string) (string, bool) {
+	prefix := ""
+	if rest, ok := strings.CutPrefix(key, "@"); ok {
+		prefix, key = "@", rest
+	}
 	switch key {
 	case "country_name":
-		return CountryName(p["country"], arg), true
+		code, _ := p.get(prefix + "country")
+		return CountryName(code, arg), true
 	case "flag":
-		return CountryFlag(p["country"]), true
+		code, _ := p.get(prefix + "country")
+		return CountryFlag(code), true
 	}
-	v, ok := p[key]
+	v, ok := p.get(prefix + key)
 	if !ok {
 		return "", false
 	}
@@ -77,26 +86,39 @@ func (p Placeholders) value(key, arg string) (string, bool) {
 	return "", false
 }
 
+// get returns the value of a name. An @ name without a value of its own falls back to the plain one.
+func (p Placeholders) get(key string) (string, bool) {
+	if v, ok := p[key]; ok {
+		return v, true
+	}
+	if rest, ok := strings.CutPrefix(key, "@"); ok {
+		v, ok := p[rest]
+		return v, ok
+	}
+	return "", false
+}
+
 // CheckPlaceholders reports the first placeholder of a template that is not in allowed or has a wrong arg.
 func CheckPlaceholders(tpl string, allowed []string) error {
 	for _, m := range placeholder.FindAllStringSubmatch(tpl, -1) {
-		key, arg := m[1], m[2]
+		key, arg := m[2], m[3]
+		name := m[1] + key
 		if !slices.Contains(allowed, key) {
-			return fmt.Errorf("unknown placeholder {%s}, use one of: {%s}", key, strings.Join(allowed, "}, {"))
+			return fmt.Errorf("unknown placeholder {%s}, use one of: {%s}", name, strings.Join(allowed, "}, {"))
 		}
 		switch {
 		case key == "country_name":
 			if arg != "" {
 				if _, err := language.Parse(arg); err != nil {
-					return fmt.Errorf("{country_name:%s} needs a language code, like {country_name:ru}", arg)
+					return fmt.Errorf("{%s:%s} needs a language code, like {country_name:ru}", name, arg)
 				}
 			}
 		case key == "flag":
 			if arg != "" {
-				return fmt.Errorf("{flag} takes no argument")
+				return fmt.Errorf("{%s} takes no argument", name)
 			}
 		case arg != "" && arg != "upper" && arg != "lower":
-			return fmt.Errorf("{%s:%s}: use upper or lower after the colon", key, arg)
+			return fmt.Errorf("{%s:%s}: use upper or lower after the colon", name, arg)
 		}
 	}
 	return nil

@@ -73,7 +73,9 @@ Host remarks, Turnable destination names and custom destination links are templa
 | `{uuid}`, `{password}` | The user's credentials on the Turnable inbound |  |  | ✓ |
 | `{name}` | Destination name, with its placeholders filled in |  |  | ✓ |
 
-Every placeholder except `{flag}` and `{country_name}` accepts `:upper` or `:lower`, like `{protocol:upper}`. An empty remark means `{node} {protocol}`, and an empty destination name means `{remark}`. In destination names, placeholders describe the Turnable inbound, not the inbound the destination leads to. In links, every value except `{host}` and `{port}` is URL-escaped.
+Every placeholder except `{flag}` and `{country_name}` accepts `:upper` or `:lower`, like `{protocol:upper}`. An empty remark means `{node} {protocol}`, and an empty destination name means `{remark}`. In links, every value except `{host}` and `{port}` is URL-escaped.
+
+In destination names and links, plain placeholders describe the Turnable inbound. Prefix any of them with `@` to take the value from the inbound the destination leads to instead: `{@inbound}` is its tag, `{@remark}` its remark, and `{@node}`, `{@country}`, `{@flag}`, `{@protocol}`, `{@host}` and `{@port}` describe that inbound and its node. An `@` name without a value on the target inbound falls back to the plain one, so `{@remark}` is the tunnel host's remark for destinations that lead nowhere. `{inbound_remark}` still works as a deprecated alias of `{@remark}`.
 
 ## Layout
 ```

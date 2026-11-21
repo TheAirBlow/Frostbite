@@ -22,6 +22,21 @@ func TestExpandPlaceholders(t *testing.T) {
 	}
 }
 
+func TestExpandAtPlaceholders(t *testing.T) {
+	p := Placeholders{"node": "Hostup", "country": "de", "protocol": "trojan", "@country": "se", "@remark": "Berlin"}
+	cases := map[string]string{
+		"{@flag} {@country}":        "🇸🇪 se",
+		"{@country_name:ru}":        "Швеция",
+		"{@remark}":                 "Berlin",
+		"{@node} {@protocol:upper}": "Hostup TROJAN", // no @ value, so the plain one is used
+	}
+	for tpl, want := range cases {
+		if got := p.Expand(tpl); got != want {
+			t.Errorf("%q: got %q, want %q", tpl, got, want)
+		}
+	}
+}
+
 func TestExpandURLEscapesValues(t *testing.T) {
 	p := Placeholders{"uuid": "u-1", "host": "127.0.0.1", "port": "10800", "password": "p w&d", "name": "Frankfurt ✓"}
 	got := p.ExpandURL("vless://{uuid}@{host}:{port}?x={password}#{name}")
@@ -30,6 +45,9 @@ func TestExpandURLEscapesValues(t *testing.T) {
 	}
 	if p.ExpandURL("a://{unknown}") != "a://{unknown}" {
 		t.Fatal("an unknown placeholder is left as it is")
+	}
+	if got := p.ExpandURL("a://{@uuid}@{@host}:{@port}"); got != "a://u-1@127.0.0.1:10800" {
+		t.Fatalf("an @ host and port must not be escaped: %q", got)
 	}
 }
 
@@ -41,19 +59,19 @@ func TestCountryWithoutCode(t *testing.T) {
 }
 
 func TestCheckPlaceholders(t *testing.T) {
-	ok := []string{"{node} {flag}", "{country_name:ru}", "{country_name:pt-BR}", "{protocol:upper}", "plain"}
+	ok := []string{"{node} {flag}", "{country_name:ru}", "{country_name:pt-BR}", "{protocol:upper}", "{@node} {@flag}", "{@country_name:ru}", "plain"}
 	for _, tpl := range ok {
 		if err := CheckPlaceholders(tpl, RemarkPlaceholders); err != nil {
 			t.Errorf("%q: %v", tpl, err)
 		}
 	}
-	bad := []string{"{uuid}", "{remark}", "{flag:ru}", "{node:shout}", "{country_name:1}"}
+	bad := []string{"{uuid}", "{remark}", "{flag:ru}", "{@flag:ru}", "{node:shout}", "{@node:shout}", "{country_name:1}", "{@unknown}"}
 	for _, tpl := range bad {
 		if CheckPlaceholders(tpl, RemarkPlaceholders) == nil {
 			t.Errorf("%q should be refused in a remark", tpl)
 		}
 	}
-	if err := CheckPlaceholders("{remark} {route}", RouteNamePlaceholders); err != nil {
-		t.Errorf("route names can use {remark} and {route}: %v", err)
+	if err := CheckPlaceholders("{remark} {@remark} {route} {inbound_remark}", RouteNamePlaceholders); err != nil {
+		t.Errorf("route names can use {remark}, {@remark}, {route} and {inbound_remark}: %v", err)
 	}
 }

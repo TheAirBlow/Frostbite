@@ -63,9 +63,12 @@
           <FormField label="Id" :name="`options.t_routes.${i}.id`" hint="Apps refer to the destination by this. Lowercase letters, digits, - and _." required>
             <input :value="r.id" class="input w-full font-mono" placeholder="wg" autocomplete="off" @input="r.id = ($event.target as HTMLInputElement).value.toLowerCase()">
           </FormField>
-          <FormField label="Name" :name="`options.t_routes.${i}.name`" hint="Shown in the app. Placeholders work here, empty means {remark}.">
-            <input v-model="r.name" class="input w-full" placeholder="{remark}">
-          </FormField>
+          <div class="flex flex-col gap-1">
+            <FormField label="Name" :name="`options.t_routes.${i}.name`" hint="Shown in the app. Placeholders work here.">
+              <input v-model="r.name" class="input w-full" placeholder="{remark}">
+            </FormField>
+            <PlaceholderHelp class="-mt-1" :names="routeNamePlaceholders" title="Name placeholders" :insert="tok => r.name = appendPlaceholder(r.name, tok)" />
+          </div>
           <FormField label="Transport" :name="`options.t_routes.${i}.transport`" hint="How packets are carried inside the tunnel.">
             <select v-model="r.transport" class="select w-full">
               <option value="mpath">{{ $t('mpath, spreads over connections') }}</option>
@@ -81,7 +84,6 @@
             </select>
           </FormField>
         </div>
-        <PlaceholderHelp :names="routeNamePlaceholders" title="Name placeholders" :insert="tok => r.name = appendPlaceholder(r.name, tok)" />
       </Advanced>
     </article>
   </section>

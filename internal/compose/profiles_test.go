@@ -99,17 +99,17 @@ func TestRouteNamesFillPlaceholders(t *testing.T) {
 	t.Fatal("no local connection for the inbound route")
 }
 
-func TestInboundRemarkIsTheRemarkOfTheTarget(t *testing.T) {
+func TestAtPlaceholdersComeFromTheTargetInbound(t *testing.T) {
 	topo, u := turnableTopology(t)
 	topo.Hosts[100] = []db.Host{{ID: 7, InboundID: 100, Remark: "{flag} Reality", Enabled: true}}
 	in := topo.Inbounds[101]
-	in.Options.TRoutes[0].Name = "{inbound_remark} (Turnable)"
-	in.Options.TRoutes[1].Name = "{inbound_remark}"
+	in.Options.TRoutes[0].Name = "{@inbound} {@remark} {@protocol} {@node} {@country} {@flag} {@host}:{@port}"
+	in.Options.TRoutes[1].Name = "{@remark}"
 	topo.Inbounds[101] = in
 
 	routes := topo.Profiles(u, []int64{1}, ModeTurnable)[0].Options.TRoutes
-	if routes[0].Name != "🇩🇪 Reality (Turnable)" {
-		t.Fatalf("got %q", routes[0].Name)
+	if want := "vless-inner 🇩🇪 Reality vless Frankfurt DE 🇩🇪 vpn.example.com:8443"; routes[0].Name != want {
+		t.Fatalf("got %q, want %q", routes[0].Name, want)
 	}
 	// a destination that is not an inbound falls back to the tunnel's remark
 	if routes[1].Name != "Frankfurt turnable" {

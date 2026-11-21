@@ -272,15 +272,23 @@ func (t *Topology) namedRoutes(si spec.Inbound, ep share.Endpoint, user spec.Use
 // DefaultRouteName is the name of a Turnable destination that has none: the remark of the tunnel's host.
 const DefaultRouteName = "{remark}"
 
-// routePlaceholders are the values the name and link of a destination can refer to. See spec.RouteNamePlaceholders.
+// routePlaceholders are the values the name and link of a destination can refer to. Plain names describe the Turnable
+// inbound; names with @ describe the inbound the destination leads to. See spec.RouteNamePlaceholders.
 func (t *Topology) routePlaceholders(ep share.Endpoint, user spec.User, r spec.TurnableRouteSpec) spec.Placeholders {
 	p := share.Placeholders(ep, user)
 	p["remark"] = share.Remark(ep, user)
+	// inbound_remark is deprecated, {@remark} replaces it
 	p["inbound_remark"] = p["remark"]
 	if target, ok := t.Inbounds[r.InboundID]; ok && r.Kind == spec.RouteInbound {
 		tep := ep
 		tep.Inbound, tep.Host = specInbound(target), hostFor(t.Hosts[target.ID])
-		p["inbound_remark"] = share.Remark(tep, user)
+		node := t.Nodes[t.Daemons[target.DaemonID].NodeID]
+		tep.NodeAddress, tep.NodeName, tep.Country = node.Address, node.Name, node.Country
+		for k, v := range share.Placeholders(tep, user) {
+			p["@"+k] = v
+		}
+		p["@remark"] = share.Remark(tep, user)
+		p["inbound_remark"] = p["@remark"]
 	}
 	p["route"] = r.ID
 	return p
