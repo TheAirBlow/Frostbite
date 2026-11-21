@@ -38,8 +38,8 @@
     "@types/ws": "^8.18.2",
     "daisyui": "5.8.2",
     "tailwindcss": "4.3.5",
-    "typescript": "6.0.3",
-    "vue-tsc": "3.3.11"
+    "typescript": "7.0.2",
+    "vue-tsc": "3.3.14"
   },
   "trustedDependencies": [
     "esbuild",
