@@ -151,10 +151,18 @@ func TestRemovedInboundStopsItsServer(t *testing.T) {
 	}
 }
 
+// billed turns on billing for every inbound of d.
+func billed(d spec.Daemon) spec.Daemon {
+	for i := range d.Inbounds {
+		d.Inbounds[i].Options.TBill = true
+	}
+	return d
+}
+
 func TestStatsAreBookedByLabel(t *testing.T) {
 	r, started := harness(t)
 	u1, u2 := user(1), user(2)
-	if err := r.Apply(context.Background(), inbound(t, u1, u2), nil); err != nil {
+	if err := r.Apply(context.Background(), billed(inbound(t, u1, u2)), nil); err != nil {
 		t.Fatal(err)
 	}
 	f := (*started)[0]
@@ -177,12 +185,44 @@ func TestStatsAreBookedByLabel(t *testing.T) {
 
 	// the traffic a user left behind is still counted after they are removed
 	f.usage = map[string]engine.Usage{u1.UUID: {Up: 5}}
-	if err := r.Apply(context.Background(), inbound(t, u2), nil); err != nil {
+	if err := r.Apply(context.Background(), billed(inbound(t, u2)), nil); err != nil {
 		t.Fatal(err)
 	}
 	st, _ = r.Stats(context.Background())
 	if st.Users["u1"].Up != 5 {
 		t.Fatalf("the last traffic of a removed user was lost: %+v", st.Users)
+	}
+}
+
+func TestTrafficIsNotBilledUnlessEnabled(t *testing.T) {
+	r, started := harness(t)
+	u1 := user(1)
+	if err := r.Apply(context.Background(), inbound(t, u1), nil); err != nil {
+		t.Fatal(err)
+	}
+	f := (*started)[0]
+	f.usage = map[string]engine.Usage{u1.UUID: {Up: 10, Down: 20}}
+	f.online = []engine.UserStats{{UUID: u1.UUID, Online: true, IPs: []string{"1.2.3.4"}}}
+
+	st, _ := r.Stats(context.Background())
+	if len(st.Users) != 0 {
+		t.Fatalf("traffic was booked with billing off: %+v", st.Users)
+	}
+	if len(st.Online["u1"]) != 1 {
+		t.Fatalf("online must still be reported: %v", st.Online)
+	}
+
+	// turning billing on keeps the server running and only counts traffic from then on
+	if err := r.Apply(context.Background(), billed(inbound(t, u1)), nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(*started) != 1 || f.stopped {
+		t.Fatal("switching billing restarted the server")
+	}
+	f.usage = map[string]engine.Usage{u1.UUID: {Up: 7}}
+	st, _ = r.Stats(context.Background())
+	if st.Users["u1"].Up != 7 {
+		t.Fatalf("traffic is not booked with billing on: %+v", st.Users)
 	}
 }
 

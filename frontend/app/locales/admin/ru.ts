@@ -846,6 +846,8 @@ export default {
   "Use a number or a range like 10-20": "Укажите число или диапазон, например 10-20",
   "Peer connections per session": "Соединений с пирами на сессию",
   "How many TURN connections a client opens at once. One session carries every destination. 5 when empty.": "Сколько соединений TURN клиент открывает сразу. Одна сессия несёт все назначения. Пустое значит 5.",
+  "Count traffic toward limits": "Учитывать трафик в лимитах",
+  "Off by default, because a destination that is one of the panel's inbounds counts the same traffic again.": "По умолчанию выключено: если назначение — одно из входящих панели, тот же трафик посчитается ещё раз.",
   "Clients skip the certificate check. Only for self-signed certificates.": "Клиенты пропускают проверку сертификата. Только для самоподписанных.",
   "The sniffed name only picks the route. The connection still goes to the address the client asked for.": "Распознанное имя только выбирает маршрут. Соединение всё равно идёт на адрес, который запросил клиент.",
   "Connect to the sniffed name instead of the address the client asked for.": "Подключаться к распознанному имени вместо адреса, который запросил клиент.",

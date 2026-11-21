@@ -149,7 +149,7 @@ require (
 	github.com/pion/stun/v3 v3.1.2 // indirect
 	github.com/pion/turn/v5 v5.0.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/theairblow/turnable v0.7.2
+	github.com/theairblow/turnable v0.7.4
 	github.com/useflyent/fhttp v0.0.0-20211004035111-333f430cfbbf // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xtaci/kcp-go/v5 v5.6.72 // indirect

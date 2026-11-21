@@ -846,6 +846,8 @@ export default {
   "Use a number or a range like 10-20": "填写数字或范围，例如 10-20",
   "Peer connections per session": "每会话的对等连接数",
   "How many TURN connections a client opens at once. One session carries every destination. 5 when empty.": "客户端同时打开的 TURN 连接数。一个会话承载所有目标。留空为 5。",
+  "Count traffic toward limits": "将流量计入限额",
+  "Off by default, because a destination that is one of the panel's inbounds counts the same traffic again.": "默认关闭，因为如果目标是面板自己的入站，同样的流量会被再计算一次。",
   "Clients skip the certificate check. Only for self-signed certificates.": "客户端跳过证书校验，仅用于自签名证书。",
   "The sniffed name only picks the route. The connection still goes to the address the client asked for.": "嗅探到的名称只用于选路，连接仍发往客户端请求的地址。",
   "Connect to the sniffed name instead of the address the client asked for.": "连接到嗅探到的名称，而不是客户端请求的地址。",

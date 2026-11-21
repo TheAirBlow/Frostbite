@@ -846,6 +846,8 @@ export default {
   "Use a number or a range like 10-20": "یک عدد یا بازه مثل 10-20 بنویسید",
   "Peer connections per session": "اتصال‌های همتا در هر نشست",
   "How many TURN connections a client opens at once. One session carries every destination. 5 when empty.": "کلاینت هم‌زمان چند اتصال TURN باز می‌کند. یک نشست همهٔ مقصدها را حمل می‌کند. خالی یعنی ۵.",
+  "Count traffic toward limits": "شمارش ترافیک در محدودیت‌ها",
+  "Off by default, because a destination that is one of the panel's inbounds counts the same traffic again.": "به‌طور پیش‌فرض خاموش است، چون اگر مقصد یکی از ورودی‌های پنل باشد، همان ترافیک دوباره شمرده می‌شود.",
   "Clients skip the certificate check. Only for self-signed certificates.": "کلاینت‌ها بررسی گواهی را رد می‌کنند. فقط برای گواهی‌های خودامضا.",
   "The sniffed name only picks the route. The connection still goes to the address the client asked for.": "نام شناسایی‌شده فقط مسیر را انتخاب می‌کند. اتصال همچنان به نشانی درخواستی کلاینت می‌رود.",
   "Connect to the sniffed name instead of the address the client asked for.": "به‌جای نشانی درخواستی کلاینت به نام شناسایی‌شده وصل شود.",

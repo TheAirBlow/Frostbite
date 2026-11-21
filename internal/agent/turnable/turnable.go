@@ -70,6 +70,7 @@ type server struct {
 	prov  *providers.RawProvider
 
 	mu     sync.Mutex
+	bill   bool              // whether traffic is reported, see spec.Options.TBill
 	users  map[string]member // who may connect, by uuid
 	labels map[string]string // every uuid seen on this server, so the last traffic of a removed user is still booked
 }
@@ -102,7 +103,9 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 	want := map[string]shape{}
 	for _, in := range d.Inbounds {
 		if in.Protocol == spec.ProtoTurnable {
-			want[in.Tag] = shape{Listen: in.Listen, Port: in.Port, Options: in.Options.TurnableDefaults()}
+			o := in.Options.TurnableDefaults()
+			o.TBill = false // switching billing needs no restart
+			want[in.Tag] = shape{Listen: in.Listen, Port: in.Port, Options: o}
 		}
 	}
 	// servers that go away or change stop before any starts, so a renamed or moved inbound can take their port
@@ -200,6 +203,7 @@ func (s *server) sync(in spec.Inbound) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.bill = o.TBill
 	for id, m := range want {
 		s.labels[id] = m.label
 		if old, ok := s.users[id]; ok && old == m {
@@ -218,7 +222,7 @@ func (s *server) sync(in spec.Inbound) {
 	s.users = want
 }
 
-// Stats returns usage since the last call and who is connected now.
+// Stats returns usage since the last call and who is connected now. Servers that are not billed report no usage.
 func (r *Runtime) Stats(context.Context) (link.Stats, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -227,7 +231,7 @@ func (r *Runtime) Stats(context.Context) (link.Stats, error) {
 	for _, s := range r.servers {
 		s.mu.Lock()
 		for id, u := range s.inst.CollectUsage() {
-			if label, ok := s.labels[id]; ok {
+			if label, ok := s.labels[id]; ok && s.bill {
 				cur := st.Users[label]
 				cur.Up += u.Up
 				cur.Down += u.Down

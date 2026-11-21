@@ -250,6 +250,7 @@ type Options struct {
 	TPeers      int                 `json:"t_peers,omitempty" ui:"label=Peer connections per session,hint=How many TURN connections a client opens at once. One session carries every destination. 5 when empty.,show=protocol:turnable,advanced"`
 	TPrivate    string              `json:"t_private,omitempty" ui:"label=Server private key,show=protocol:turnable,advanced"`
 	TPublic     string              `json:"t_public,omitempty" ui:"label=Server public key,show=protocol:turnable,advanced"`
+	TBill       bool                `json:"t_bill,omitempty" ui:"label=Count traffic toward limits,hint=Off by default, because a destination that is one of the panel's inbounds counts the same traffic again.,show=protocol:turnable"`
 	NaiveDest   string              `json:"naive_dest,omitempty" ui:"label=Site address,hint=Where visitors and failed logins are sent, as host:port. Usually your web server.,show=core:naive"`
 	NaiveTLS    bool                `json:"naive_dest_tls,omitempty" ui:"label=Site uses HTTPS,show=core:naive"`
 	NaiveSNI    string              `json:"naive_dest_sni,omitempty" ui:"label=Site server name,hint=Sent to the site over HTTPS. Empty uses the name the visitor asked for.,show=core:naive,advanced"`
