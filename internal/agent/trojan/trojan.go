@@ -177,6 +177,7 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, rendered []byte) error
 func (r *Runtime) apply(cfg coretrojan.Config, reread bool) error {
 	var failed []error
 	want := map[string]bool{}
+	states := map[string]*state{}
 	for _, ib := range cfg.Inbounds {
 		want[ib.Tag] = true
 		// a TLS config that stays keeps its session ticket keys, so returning visitors resume
@@ -188,26 +189,33 @@ func (r *Runtime) apply(cfg coretrojan.Config, reread bool) error {
 			failed = append(failed, fmt.Errorf("inbound %s: %w", ib.Tag, err))
 			continue
 		}
-		if s, ok := r.servers[ib.Tag]; ok && s.socket == socketOf(ib) {
-			s.state.Store(st)
-			continue
-		} else if ok {
+		states[ib.Tag] = st
+	}
+	// listeners that go away or move close before any opens, so a renamed or moved inbound can take their port
+	for tag, s := range r.servers {
+		if !want[tag] {
+			r.stopServer(s)
+			r.logf(levelInfo, "stopped %s (%s)", s.addr, tag)
+		} else if st := states[tag]; st != nil && s.socket != socketOf(st.ib) {
 			r.stopServer(s)
 		}
-		users := r.users[ib.Tag]
-		s, err := r.listen(ib, st, users)
+	}
+	for _, ib := range cfg.Inbounds {
+		st := states[ib.Tag]
+		if st == nil {
+			continue
+		}
+		if s, ok := r.servers[ib.Tag]; ok {
+			s.state.Store(st)
+			continue
+		}
+		s, err := r.listen(ib, st, r.users[ib.Tag])
 		if err != nil {
 			failed = append(failed, fmt.Errorf("inbound %s: %w", ib.Tag, err))
 			continue
 		}
 		r.servers[ib.Tag] = s
 		r.logf(levelInfo, "listening on %s (%s)", ib.Listen, ib.Tag)
-	}
-	for tag, s := range r.servers {
-		if !want[tag] {
-			r.stopServer(s)
-			r.logf(levelInfo, "stopped %s (%s)", s.addr, tag)
-		}
 	}
 	return errors.Join(failed...)
 }

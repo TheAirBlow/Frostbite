@@ -849,3 +849,10 @@ func upstreamClient(t *testing.T, name string) {
 		t.Fatalf("udp: %q %v\n%s", buf[:n], err, out.String())
 	}
 }
+
+func TestRenamedInboundKeepsItsPort(t *testing.T) {
+	f := newFixture(t, nil)
+	f.d.Inbounds[0].Tag = "tj-renamed"
+	f.apply(t)
+	expectEcho(t, f.connect(t, "pw1", f.echo, []byte("hello")), "hello")
+}

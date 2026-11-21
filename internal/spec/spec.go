@@ -119,8 +119,8 @@ type Forward struct {
 // Sniffing controls protocol sniffing on an inbound.
 type Sniffing struct {
 	Enabled      bool `json:"enabled" ui:"label=Sniff traffic"`
-	RouteOnly    bool `json:"route_only" ui:"label=Route only,advanced"`
-	DestOverride bool `json:"dest_override" ui:"label=Override destination,advanced"`
+	RouteOnly    bool `json:"route_only" ui:"label=Route only,hint=The sniffed name only picks the route. The connection still goes to the address the client asked for.,show=core:xray|trojan,advanced"`
+	DestOverride bool `json:"dest_override" ui:"label=Override destination,hint=Connect to the sniffed name instead of the address the client asked for.,show=core:trojan,advanced"`
 }
 
 // Transport describes the stream layer under the proxy protocol.
@@ -130,7 +130,7 @@ type Transport struct {
 	Host        string            `json:"host,omitempty" ui:"label=Host header,show=type:ws|httpupgrade|xhttp,advanced"`
 	ServiceName string            `json:"service_name,omitempty" ui:"label=gRPC service name,show=type:grpc"`
 	Mode        string            `json:"mode,omitempty" ui:"label=XHTTP mode,options=auto|packet-up|stream-up|stream-one,show=type:xhttp,advanced"`
-	Headers     map[string]string `json:"headers,omitempty" ui:"label=Extra headers,advanced"`
+	Headers     map[string]string `json:"headers,omitempty" ui:"label=Extra headers,show=type:ws|httpupgrade|xhttp,advanced"`
 	EarlyData   int               `json:"early_data,omitempty" ui:"label=Max early data,show=type:ws,advanced"`
 	KCPSeed     string            `json:"kcp_seed,omitempty" ui:"label=mKCP seed,show=type:kcp,advanced"`
 }
@@ -139,9 +139,9 @@ type Transport struct {
 type Security struct {
 	Type        string    `json:"type" ui:"label=Security,options=none|tls|reality"`
 	SNI         string    `json:"sni,omitempty" ui:"label=SNI,hint=The name clients ask for. Empty uses the address they connect to.,show=type:tls"`
-	ALPN        []string  `json:"alpn,omitempty" ui:"label=ALPN,advanced"`
-	Fingerprint string    `json:"fingerprint,omitempty" ui:"label=uTLS fingerprint,options=|chrome|firefox|safari|ios|android|edge|random,advanced"`
-	Insecure    bool      `json:"insecure,omitempty" ui:"label=Allow insecure,advanced"`
+	ALPN        []string  `json:"alpn,omitempty" ui:"label=ALPN,show=type:tls|reality,advanced"`
+	Fingerprint string    `json:"fingerprint,omitempty" ui:"label=uTLS fingerprint,options=|chrome|firefox|safari|ios|android|edge|random,show=type:tls|reality,advanced"`
+	Insecure    bool      `json:"insecure,omitempty" ui:"label=Allow insecure,hint=Clients skip the certificate check. Only for self-signed certificates.,show=type:tls,advanced"`
 	CertPath    string    `json:"cert_path,omitempty" ui:"label=Certificate path,hint=Path on the node,show=type:tls"`
 	KeyPath     string    `json:"key_path,omitempty" ui:"label=Key path,hint=Path on the node,show=type:tls"`
 	ECHKey      string    `json:"ech_key,omitempty" ui:"label=ECH key,show=type:tls,advanced"`
@@ -220,13 +220,13 @@ type Options struct {
 	Flow        string              `json:"flow,omitempty" ui:"label=Flow,options=|xtls-rprx-vision,show=protocol:vless"`
 	Method      string              `json:"method,omitempty" ui:"label=Cipher,options=2022-blake3-aes-128-gcm|2022-blake3-aes-256-gcm|2022-blake3-chacha20-poly1305|chacha20-ietf-poly1305|aes-128-gcm|aes-256-gcm,show=protocol:shadowsocks"`
 	ServerKey   string              `json:"server_key,omitempty" ui:"label=Server key,show=protocol:shadowsocks"`
-	UpMbps      int                 `json:"up_mbps,omitempty" ui:"label=Upload limit (Mbps),show=protocol:hysteria2,advanced"`
-	DownMbps    int                 `json:"down_mbps,omitempty" ui:"label=Download limit (Mbps),show=protocol:hysteria2,advanced"`
+	UpMbps      int                 `json:"up_mbps,omitempty" ui:"label=Server upload (Mbps),hint=How fast the server sends at most. Clients get it as their download speed. Empty leaves it to the client.,show=protocol:hysteria2,advanced"`
+	DownMbps    int                 `json:"down_mbps,omitempty" ui:"label=Server download (Mbps),hint=How fast the server receives at most. Clients get it as their upload speed.,show=protocol:hysteria2,advanced"`
 	Obfs        string              `json:"obfs,omitempty" ui:"label=Obfuscation,options=|salamander,show=protocol:hysteria2,advanced"`
 	ObfsPass    string              `json:"obfs_pass,omitempty" ui:"label=Obfuscation password,show=protocol:hysteria2,advanced"`
 	Masquerade  string              `json:"masquerade,omitempty" ui:"label=Masquerade URL,show=protocol:hysteria2,advanced"`
-	Ports       string              `json:"ports,omitempty" ui:"label=Port hopping range,hint=e.g. 20000-30000,show=protocol:hysteria2|tuic,advanced"`
-	CongestCtl  string              `json:"congestion,omitempty" ui:"label=Congestion control,options=bbr|cubic|new_reno,show=protocol:tuic|hysteria2,advanced"`
+	Ports       string              `json:"ports,omitempty" ui:"label=Port hopping range,hint=Clients hop between ports in this range like 20000-30000. Forward the range to the inbound port on the node yourself. The panel does not.,show=protocol:hysteria2,advanced"`
+	CongestCtl  string              `json:"congestion,omitempty" ui:"label=Congestion control,options=bbr|cubic|new_reno,show=protocol:tuic,advanced"`
 	ZeroRTT     bool                `json:"zero_rtt,omitempty" ui:"label=0-RTT,show=protocol:tuic,advanced"`
 	Heartbeat   string              `json:"heartbeat,omitempty" ui:"label=Heartbeat,show=protocol:tuic,advanced"`
 	Handshake   string              `json:"handshake,omitempty" ui:"label=Handshake server,hint=host:port,show=protocol:shadowtls"`
@@ -247,15 +247,15 @@ type Options struct {
 	TSocket     string              `json:"t_socket,omitempty"`
 	TTransport  string              `json:"t_transport,omitempty"`
 	TEncryption string              `json:"t_encryption,omitempty"`
-	TPeers      int                 `json:"t_peers,omitempty" ui:"label=Connections per user,show=protocol:turnable,advanced"`
+	TPeers      int                 `json:"t_peers,omitempty" ui:"label=Peer connections per session,hint=How many TURN connections a client opens at once. One session carries every destination. 5 when empty.,show=protocol:turnable,advanced"`
 	TPrivate    string              `json:"t_private,omitempty" ui:"label=Server private key,show=protocol:turnable,advanced"`
 	TPublic     string              `json:"t_public,omitempty" ui:"label=Server public key,show=protocol:turnable,advanced"`
-	NaiveDest   string              `json:"naive_dest,omitempty" ui:"label=Site address,hint=Where visitors and failed logins are sent, as host:port. Usually your web server.,show=protocol:naive"`
-	NaiveTLS    bool                `json:"naive_dest_tls,omitempty" ui:"label=Site uses HTTPS,show=protocol:naive"`
-	NaiveSNI    string              `json:"naive_dest_sni,omitempty" ui:"label=Site server name,hint=Sent to the site over HTTPS. Empty uses the name the visitor asked for.,show=protocol:naive,advanced"`
-	NaiveSkip   bool                `json:"naive_dest_insecure,omitempty" ui:"label=Skip site certificate check,show=protocol:naive,advanced"`
-	NaiveProxy  string              `json:"naive_dest_proxy,omitempty" ui:"label=PROXY protocol to the site,hint=Tells the site the visitor's real address,options=|v1|v2,show=protocol:naive"`
-	NaiveHeader string              `json:"naive_ip_header,omitempty" ui:"label=Client IP header,hint=Header that carries the visitor's address to the site. Empty means X-Forwarded-For and none means no header.,show=protocol:naive"`
+	NaiveDest   string              `json:"naive_dest,omitempty" ui:"label=Site address,hint=Where visitors and failed logins are sent, as host:port. Usually your web server.,show=core:naive"`
+	NaiveTLS    bool                `json:"naive_dest_tls,omitempty" ui:"label=Site uses HTTPS,show=core:naive"`
+	NaiveSNI    string              `json:"naive_dest_sni,omitempty" ui:"label=Site server name,hint=Sent to the site over HTTPS. Empty uses the name the visitor asked for.,show=core:naive,advanced"`
+	NaiveSkip   bool                `json:"naive_dest_insecure,omitempty" ui:"label=Skip site certificate check,show=core:naive,advanced"`
+	NaiveProxy  string              `json:"naive_dest_proxy,omitempty" ui:"label=PROXY protocol to the site,hint=Tells the site the visitor's real address,options=|v1|v2,show=core:naive"`
+	NaiveHeader string              `json:"naive_ip_header,omitempty" ui:"label=Client IP header,hint=Header that carries the visitor's address to the site. Empty means X-Forwarded-For and none means no header.,show=core:naive"`
 	TJDest      string              `json:"trojan_dest,omitempty" ui:"label=Site address,hint=Where visitors and failed logins are sent once TLS is off, as host:port. Usually your web server.,show=core:trojan"`
 	TJTLS       bool                `json:"trojan_dest_tls,omitempty" ui:"label=Site uses HTTPS,show=core:trojan"`
 	TJSNI       string              `json:"trojan_dest_sni,omitempty" ui:"label=Site server name,hint=Sent to the site over HTTPS. Empty uses the name the visitor asked for.,show=core:trojan,advanced"`
@@ -278,7 +278,7 @@ type Options struct {
 	TJNoAlive   bool                `json:"trojan_no_keepalive,omitempty" ui:"label=Turn off TCP keep-alive,show=core:trojan,advanced"`
 	WGAddress   string              `json:"wg_address,omitempty"` // a user's own tunnel address, filled in for client profiles
 	Auth        bool                `json:"auth,omitempty" ui:"label=Require auth,show=protocol:socks|http|mixed"`
-	UDP         bool                `json:"udp,omitempty" ui:"label=Allow UDP,show=protocol:socks|mixed,advanced"`
+	UDP         bool                `json:"udp,omitempty"` // unused, socks inbounds always carry UDP
 	Mux         *Mux                `json:"mux,omitempty"`
 	Fragment    *Frag               `json:"fragment,omitempty"`
 	AcceptProxy bool                `json:"accept_proxy,omitempty"` // expect a PROXY protocol header, set when an edge sits in front

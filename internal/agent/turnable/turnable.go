@@ -99,21 +99,28 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 	defer r.mu.Unlock()
 	r.last = d
 
-	want := map[string]bool{}
+	want := map[string]shape{}
+	for _, in := range d.Inbounds {
+		if in.Protocol == spec.ProtoTurnable {
+			want[in.Tag] = shape{Listen: in.Listen, Port: in.Port, Options: in.Options.TurnableDefaults()}
+		}
+	}
+	// servers that go away or change stop before any starts, so a renamed or moved inbound can take their port
+	for tag, s := range r.servers {
+		if sh, ok := want[tag]; !ok || !reflect.DeepEqual(s.shape, sh) {
+			r.stop(tag, s)
+		}
+	}
+
 	var failed []error
 	for _, in := range d.Inbounds {
-		if in.Protocol != spec.ProtoTurnable {
+		sh, ok := want[in.Tag]
+		if !ok {
 			continue
 		}
-		want[in.Tag] = true
-		sh := shape{Listen: in.Listen, Port: in.Port, Options: in.Options.TurnableDefaults()}
-
 		if s, ok := r.servers[in.Tag]; ok {
-			if reflect.DeepEqual(s.shape, sh) {
-				s.sync(in)
-				continue
-			}
-			r.stop(in.Tag, s)
+			s.sync(in)
+			continue
 		}
 		s, err := r.launch(in, sh, d.Log.Level)
 		if err != nil {
@@ -122,11 +129,6 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 		}
 		r.servers[in.Tag] = s
 		r.logf("%s: serving on %s:%d", in.Tag, in.Listen, in.Port)
-	}
-	for tag, s := range r.servers {
-		if !want[tag] {
-			r.stop(tag, s)
-		}
 	}
 	return errors.Join(failed...)
 }

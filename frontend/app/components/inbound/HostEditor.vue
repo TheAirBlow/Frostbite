@@ -3,9 +3,7 @@
     <p class="text-base-content/60 text-sm">
       {{ $t('One host per entry point. Each becomes its own profile.') }}
     </p>
-    <p class="text-base-content/50 text-xs">
-      {{ $t('Remark placeholders:') }} <span class="font-mono">{node} {country} {inbound} {protocol} {transport} {security} {user}</span>
-    </p>
+    <PlaceholderHelp :names="remarkPlaceholders" title="Remark placeholders" />
 
     <div v-for="h in hosts" :key="h.id" class="surface p-3">
       <div class="flex items-center gap-2">
@@ -18,7 +16,7 @@
       <p class="text-base-content/50 mt-1 font-mono text-xs">{{ h.address || nodeAddress }}:{{ h.port || inbound.port }}<template v-if="h.sni"> · sni {{ h.sni }}</template><template v-if="h.path"> · {{ h.path }}</template></p>
 
       <form v-if="editing === h.id" class="mt-3 flex flex-col gap-3" novalidate @submit.prevent="save(h)">
-        <FormField label="Remark" name="remark"><input v-model="draft.remark" class="input w-full"></FormField>
+        <FormField label="Remark" name="remark"><input v-model="draft.remark" class="input w-full" placeholder="{node} {protocol}"></FormField>
         <div class="grid gap-3 sm:grid-cols-3">
           <FormField class="sm:col-span-2" label="Address" name="address" :hint="h.bridge_inbound_id ? 'Kept in sync with the relay.' : 'Empty uses the node address.'"><input v-model="draft.address" class="input w-full font-mono" :placeholder="nodeAddress" :readonly="!!h.bridge_inbound_id"></FormField>
           <FormField label="Port" name="port" hint="Empty uses the inbound port."><input v-model.number="draft.port" type="number" class="input w-full" :placeholder="String(inbound.port)" :readonly="!!h.bridge_inbound_id"></FormField>
@@ -82,6 +80,7 @@ const range = (v: string | undefined) => (!v || /^\d+(-\d+)?$/.test(v) ? undefin
 
 const formApi = useForm(() => (editing.value ? draft.value : null), (h) => {
   const e: Record<string, Check> = {}
+  e.remark = checkPlaceholders(h.remark, remarkPlaceholders)
   if (h.address) e.address = checkHost(h.address)
   if (h.port) e.port = checkPort(h.port)
   if (h.sni) e.sni = checkHost(h.sni)

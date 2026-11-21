@@ -4,7 +4,7 @@ package share
 import (
 	"fmt"
 	"slices"
-	"strings"
+	"strconv"
 
 	"frostbite/internal/spec"
 )
@@ -31,25 +31,19 @@ type Endpoint struct {
 	NodeAddress string
 	NodeName    string
 	Country     string
+	Username    string // what {user} shows; empty uses the user's label
 }
 
 // Upstream builds the client side description of an endpoint for one user.
 func Upstream(ep Endpoint, u spec.User) (spec.Upstream, error) {
 	in, h := ep.Inbound, ep.Host
-	addr := h.Address
-	if addr == "" {
-		addr = ep.NodeAddress
-	}
+	addr, port := ep.address()
 	if addr == "" {
 		return spec.Upstream{}, fmt.Errorf("inbound %s has no address to advertise", in.Tag)
 	}
-	port := h.Port
-	if port == 0 {
-		port = in.Port
-	}
 
 	up := spec.Upstream{
-		Name:      remark(ep, u),
+		Name:      Remark(ep, u),
 		Protocol:  in.Protocol,
 		Address:   addr,
 		Port:      port,
@@ -77,6 +71,10 @@ func Upstream(ep Endpoint, u spec.User) (spec.Upstream, error) {
 	}
 	if h.Fragment != nil {
 		up.Options.Fragment = h.Fragment
+	}
+	// the inbound speaks for the server, the client sends what the server receives
+	if in.Protocol == spec.ProtoHysteria2 {
+		up.Options.UpMbps, up.Options.DownMbps = in.Options.DownMbps, in.Options.UpMbps
 	}
 	if in.Protocol == spec.ProtoWireGuard {
 		addr, err := spec.WGAddress(in.Options.WGSubnet, u.ID)
@@ -132,23 +130,50 @@ func hostOrAddr(h Host) string {
 	return h.Address
 }
 
-// remark renders a host's remark template for one user.
-func remark(ep Endpoint, u spec.User) string {
-	t := ep.Host.Remark
-	if t == "" {
-		t = "{node} {protocol}"
+// address is where clients connect: the host's override, else the node and inbound.
+func (ep Endpoint) address() (string, int) {
+	addr, port := ep.Host.Address, ep.Host.Port
+	if addr == "" {
+		addr = ep.NodeAddress
 	}
+	if port == 0 {
+		port = ep.Inbound.Port
+	}
+	return addr, port
+}
+
+// Placeholders are the values a remark of the endpoint can refer to, for one user. See spec.RemarkPlaceholders.
+func Placeholders(ep Endpoint, u spec.User) spec.Placeholders {
 	sec := ep.Inbound.Security.Type
 	if sec == "" {
 		sec = "none"
 	}
-	return strings.NewReplacer(
-		"{node}", ep.NodeName,
-		"{country}", ep.Country,
-		"{inbound}", ep.Inbound.Tag,
-		"{protocol}", ep.Inbound.Protocol,
-		"{transport}", ep.Inbound.Transport.Type,
-		"{security}", sec,
-		"{user}", u.Name,
-	).Replace(t)
+	addr, port := ep.address()
+	user := ep.Username
+	if user == "" {
+		user = u.Name
+	}
+	return spec.Placeholders{
+		"node":      ep.NodeName,
+		"country":   ep.Country,
+		"inbound":   ep.Inbound.Tag,
+		"protocol":  ep.Inbound.Protocol,
+		"transport": ep.Inbound.Transport.Type,
+		"security":  sec,
+		"user":      user,
+		"host":      addr,
+		"port":      strconv.Itoa(port),
+	}
 }
+
+// Remark renders a host's remark template for one user.
+func Remark(ep Endpoint, u spec.User) string {
+	t := ep.Host.Remark
+	if t == "" {
+		t = DefaultRemark
+	}
+	return Placeholders(ep, u).Expand(t)
+}
+
+// DefaultRemark is the remark of a host that has none.
+const DefaultRemark = "{node} {protocol}"

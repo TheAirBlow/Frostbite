@@ -1,12 +1,14 @@
 package share
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
 	"regexp"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -158,6 +160,7 @@ func renderXray(profiles []spec.Upstream, patch json.RawMessage) ([]byte, error)
 		if err != nil {
 			continue
 		}
+		extra := xrayFragment(p, o)
 		cfg := map[string]any{
 			"remarks": p.Name,
 			"log":     map[string]any{"loglevel": "warning"},
@@ -166,11 +169,11 @@ func renderXray(profiles []spec.Upstream, patch json.RawMessage) ([]byte, error)
 					"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls", "quic"}}},
 				map[string]any{"tag": "http", "listen": "127.0.0.1", "port": 10809, "protocol": "http"},
 			},
-			"outbounds": []any{
+			"outbounds": append([]any{
 				o,
 				map[string]any{"tag": "direct", "protocol": "freedom"},
 				map[string]any{"tag": "block", "protocol": "blackhole"},
-			},
+			}, extra...),
 			"routing": map[string]any{"domainStrategy": "IPIfNonMatch", "rules": []any{
 				map[string]any{"type": "field", "ip": []string{"geoip:private"}, "outboundTag": "direct"},
 			}},
@@ -184,6 +187,27 @@ func renderXray(profiles []spec.Upstream, patch json.RawMessage) ([]byte, error)
 		return nil, fmt.Errorf("no profile is usable with xray")
 	}
 	return json.MarshalIndent(docs, "", "  ")
+}
+
+// xrayFragment routes a TLS profile through a freedom outbound that splits the hello, the way Xray clients
+// fragment. It returns the outbounds to add.
+func xrayFragment(p spec.Upstream, o map[string]any) []any {
+	f := p.Options.Fragment
+	if f == nil || !f.Enabled || (p.Security.Type != spec.SecurityTLS && p.Security.Type != spec.SecurityReality) {
+		return nil
+	}
+	ss, _ := o["streamSettings"].(map[string]any)
+	if ss == nil {
+		ss = map[string]any{}
+		o["streamSettings"] = ss
+	}
+	ss["sockopt"] = map[string]any{"dialerProxy": "fragment"}
+	return []any{map[string]any{
+		"tag": "fragment", "protocol": "freedom",
+		"settings": map[string]any{"fragment": map[string]any{
+			"packets": cmp.Or(f.Packets, fragmentPackets), "length": cmp.Or(f.Length, fragmentLength), "interval": cmp.Or(f.Interval, fragmentInterval),
+		}},
+	}}
 }
 
 // renderClash builds a mihomo config with a url-test group.
@@ -258,12 +282,27 @@ func clashProxy(p spec.Upstream) map[string]any {
 		if p.Options.Ports != "" {
 			m["ports"] = p.Options.Ports
 		}
+		if p.Options.UpMbps > 0 {
+			m["up"] = fmt.Sprintf("%d Mbps", p.Options.UpMbps)
+		}
+		if p.Options.DownMbps > 0 {
+			m["down"] = fmt.Sprintf("%d Mbps", p.Options.DownMbps)
+		}
 	case spec.ProtoTUIC:
 		m["type"], m["uuid"], m["password"] = "tuic", p.UUID, p.Password
 		m["alpn"] = []string{"h3"}
+		if len(s.ALPN) > 0 {
+			m["alpn"] = s.ALPN
+		}
 		m["udp-relay-mode"] = "native"
 		if p.Options.CongestCtl != "" {
 			m["congestion-controller"] = p.Options.CongestCtl
+		}
+		if p.Options.ZeroRTT {
+			m["reduce-rtt"] = true
+		}
+		if d, err := time.ParseDuration(p.Options.Heartbeat); err == nil && d > 0 {
+			m["heartbeat-interval"] = d.Milliseconds()
 		}
 	case spec.ProtoAnyTLS:
 		m["type"], m["password"] = "anytls", p.Password
@@ -275,6 +314,9 @@ func clashProxy(p spec.Upstream) map[string]any {
 		return core.Prune(m).(map[string]any)
 	case spec.ProtoSOCKS, spec.ProtoMixed:
 		m["type"], m["username"], m["password"] = "socks5", p.Username, p.Password
+	case spec.ProtoHTTP:
+		m["type"], m["username"], m["password"] = "http", p.Username, p.Password
+		delete(m, "udp")
 	default:
 		return nil
 	}
@@ -290,6 +332,9 @@ func clashProxy(p spec.Upstream) map[string]any {
 		}
 		if len(s.ALPN) > 0 && p.Protocol != spec.ProtoTUIC {
 			m["alpn"] = s.ALPN
+		}
+		if s.ECHConfig != "" {
+			m["ech-opts"] = map[string]any{"enable": true, "config": s.ECHConfig}
 		}
 	}
 	if s.Fingerprint != "" || s.Type == spec.SecurityReality {
@@ -314,9 +359,10 @@ func clashProxy(p spec.Upstream) map[string]any {
 	switch t.Type {
 	case spec.TransportWS:
 		m["network"] = "ws"
-		opts := map[string]any{"path": t.Path}
-		if t.Host != "" {
-			opts["headers"] = map[string]any{"Host": t.Host}
+		opts := map[string]any{"path": t.Path, "headers": clashHeaders(t)}
+		if t.EarlyData > 0 {
+			opts["max-early-data"] = t.EarlyData
+			opts["early-data-header-name"] = "Sec-WebSocket-Protocol"
 		}
 		m["ws-opts"] = opts
 	case spec.TransportGRPC:
@@ -324,12 +370,37 @@ func clashProxy(p spec.Upstream) map[string]any {
 		m["grpc-opts"] = map[string]any{"grpc-service-name": t.ServiceName}
 	case spec.TransportHTTPUpgrade:
 		m["network"] = "ws"
-		m["ws-opts"] = map[string]any{"path": t.Path, "v2ray-http-upgrade": true, "headers": map[string]any{"Host": t.Host}}
+		m["ws-opts"] = map[string]any{"path": t.Path, "v2ray-http-upgrade": true, "headers": clashHeaders(t)}
 	case spec.TransportXHTTP:
 		m["network"] = "xhttp"
-		m["xhttp-opts"] = map[string]any{"path": t.Path, "host": t.Host, "mode": t.Mode}
+		m["xhttp-opts"] = map[string]any{"path": t.Path, "host": t.Host, "mode": t.Mode, "headers": t.Headers}
+	}
+
+	if mux := p.Options.Mux; mux != nil && mux.Enabled && clashMuxable(p.Protocol) {
+		m["smux"] = map[string]any{"enabled": true, "protocol": cmp.Or(mux.Protocol, "h2mux"), "max-streams": mux.Concurrency, "padding": mux.Padding}
 	}
 	return core.Prune(m).(map[string]any)
+}
+
+// clashHeaders folds the host shortcut into the transport headers.
+func clashHeaders(t spec.Transport) map[string]any {
+	out := map[string]any{}
+	for k, v := range t.Headers {
+		out[k] = v
+	}
+	if t.Host != "" {
+		out["Host"] = t.Host
+	}
+	return out
+}
+
+// clashMuxable reports whether mihomo's sing-mux works for the protocol, which takes TCP ones only.
+func clashMuxable(proto string) bool {
+	switch proto {
+	case spec.ProtoVLESS, spec.ProtoVMess, spec.ProtoTrojan, spec.ProtoShadowsocks:
+		return true
+	}
+	return false
 }
 
 // UserInfo builds the subscription-userinfo header value clients use to show usage.

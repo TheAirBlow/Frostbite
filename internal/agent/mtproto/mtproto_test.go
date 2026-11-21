@@ -254,3 +254,17 @@ func TestFrontsStrangers(t *testing.T) {
 		t.Fatalf("stranger saw %q", buf[:n])
 	}
 }
+
+func TestRenamedInboundKeepsItsPort(t *testing.T) {
+	secret := make([]byte, 16)
+	rand.Read(secret)
+	rt, port := testInbound(t, "padded", map[string][]byte{"u1": secret})
+	in := rt.last.Inbounds[0]
+	in.Tag = "mt-renamed"
+	if err := rt.Apply(nil, spec.Daemon{Inbounds: []spec.Inbound{in}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := connect(t, "padded", port, secret); err != nil || got != "echo:ping" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}

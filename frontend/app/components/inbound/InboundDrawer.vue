@@ -50,10 +50,10 @@
         <template v-if="form.protocol !== 'forward'">
           <SchemaForm v-model="transportModel" :fields="transportFields" prefix="transport." :context="{ protocol: form.protocol }" />
           <p v-if="!transportFields.length" class="text-base-content/50 text-sm">{{ $t('This protocol has its own transport.') }}</p>
-          <div v-if="!['mtproto', 'turnable'].includes(form.protocol)" class="divider my-0">{{ $t('Security') }}</div>
-          <SchemaForm v-if="!['mtproto', 'turnable'].includes(form.protocol)" v-model="securityModel" :fields="securityFields" prefix="security." :context="{ protocol: form.protocol }" />
+          <div v-if="secured" class="divider my-0">{{ $t('Security') }}</div>
+          <SchemaForm v-if="secured" v-model="securityModel" :fields="securityFields" prefix="security." :context="{ protocol: form.protocol }" />
 
-          <section v-if="form.security.type === 'tls'" class="surface flex flex-col gap-3 p-4">
+          <section v-if="secured && form.security.type === 'tls'" class="surface flex flex-col gap-3 p-4">
             <FormField label="Certificate" name="cert_source" :hint="certHints[certSource]">
               <select v-model="certSource" class="select w-full">
                 <option value="existing">{{ $t('Use an existing one (Caddy, certbot)') }}</option>
@@ -80,7 +80,7 @@
             </p>
           </section>
 
-          <section v-if="form.security.type === 'reality' && reality" class="surface flex flex-col gap-3 p-4">
+          <section v-if="secured && form.security.type === 'reality' && reality" class="surface flex flex-col gap-3 p-4">
             <h4 class="text-base-content/70 text-sm font-semibold tracking-wide uppercase">REALITY</h4>
             <FormField label="Handshake target" name="security.reality.dest" hint="A real site with TLS 1.3 and h2. Your server will pretend to be it." required>
               <div class="join w-full">
@@ -156,24 +156,38 @@
           <button type="button" class="btn btn-sm self-start" @click="newSsKey"><Icon name="fa6-solid:key" size="12" /> {{ $t('New server key') }}</button>
         </template>
 
-        <template v-if="!['forward', 'mtproto', 'turnable'].includes(form.protocol)">
+        <template v-if="sniffable">
           <div class="divider my-0">{{ $t('Sniffing') }}</div>
-          <SchemaForm v-model="sniffingModel" :fields="schema?.sniffing ?? []" prefix="sniffing." />
+          <SchemaForm v-model="sniffingModel" :fields="schema?.sniffing ?? []" prefix="sniffing." :context="{ core: daemon?.kind ?? '' }" />
 
+        </template>
+
+        <template v-if="muxable || fragmentable">
           <div class="divider my-0">{{ $t('What clients get') }}</div>
-          <p class="text-base-content/50 -mt-2 text-xs">{{ $t('These travel in subscriptions. The server itself does not enforce them.') }}</p>
-          <ToggleRow :model-value="!!mux?.enabled" label="Multiplexing" hint="Many streams over one connection." @update:model-value="setMux({ enabled: $event })" />
-          <div v-if="mux?.enabled" class="grid gap-3 sm:grid-cols-3">
-            <FormField label="Protocol" name="options.mux.protocol"><select class="select w-full" :value="mux.protocol || 'h2mux'" @change="setMux({ protocol: ($event.target as HTMLSelectElement).value })"><option value="h2mux">{{ $t('h2mux') }}</option><option value="smux">{{ $t('smux') }}</option><option value="yamux">{{ $t('yamux') }}</option></select></FormField>
-            <FormField label="Concurrency" name="options.mux.concurrency"><input type="number" min="0" class="input w-full" :value="mux.concurrency || ''" @input="setMux({ concurrency: Number(($event.target as HTMLInputElement).value) })"></FormField>
-            <ToggleRow :model-value="!!mux.padding" label="Padding" @update:model-value="setMux({ padding: $event })" />
-          </div>
+          <p class="text-base-content/50 -mt-2 text-xs">{{ $t('These travel in subscriptions. The server itself does not enforce them. A host can override them.') }}</p>
+          <template v-if="muxable">
+            <ToggleRow :model-value="!!mux?.enabled" label="Multiplexing" hint="Many streams over one connection." @update:model-value="setMux({ enabled: $event })" />
+            <div v-if="mux?.enabled" class="grid gap-3 sm:grid-cols-3">
+              <FormField label="Protocol" name="options.mux.protocol" hint="Xray clients always use their own Mux.Cool."><select class="select w-full" :value="mux.protocol || 'h2mux'" @change="setMux({ protocol: ($event.target as HTMLSelectElement).value })"><option value="h2mux">{{ $t('h2mux') }}</option><option value="smux">{{ $t('smux') }}</option><option value="yamux">{{ $t('yamux') }}</option></select></FormField>
+              <FormField label="Streams per connection" name="options.mux.concurrency" hint="Empty leaves it to the client. Xray uses 8."><input type="number" min="0" max="1024" class="input w-full" :value="mux.concurrency || ''" placeholder="8" @input="setMux({ concurrency: Number(($event.target as HTMLInputElement).value) || 0 })"></FormField>
+              <ToggleRow :model-value="!!mux.padding" label="Padding" hint="sing-box based clients only." @update:model-value="setMux({ padding: $event })" />
+            </div>
+          </template>
+          <template v-if="fragmentable">
+            <ToggleRow :model-value="!!fragment?.enabled" label="Fragment the TLS hello" hint="Splits the first TLS packet so filters that read the server name miss it. sing-box clients only take on or off." @update:model-value="setFragment({ enabled: $event })" />
+            <div v-if="fragment?.enabled" class="grid gap-3 sm:grid-cols-3">
+              <FormField label="Packets" name="options.fragment.packets" hint="tlshello, or a range of writes like 1-3."><input class="input w-full font-mono" :value="fragment.packets ?? ''" placeholder="tlshello" @input="setFragment({ packets: ($event.target as HTMLInputElement).value })"></FormField>
+              <FormField label="Length" name="options.fragment.length" hint="Bytes per piece."><input class="input w-full font-mono" :value="fragment.length ?? ''" placeholder="100-200" @input="setFragment({ length: ($event.target as HTMLInputElement).value })"></FormField>
+              <FormField label="Interval (ms)" name="options.fragment.interval" hint="Pause between pieces."><input class="input w-full font-mono" :value="fragment.interval ?? ''" placeholder="10-20" @input="setFragment({ interval: ($event.target as HTMLInputElement).value })"></FormField>
+            </div>
+          </template>
         </template>
       </template>
 
       <template v-else-if="tab === 'advanced'">
-        <FormField label="Raw patch" name="raw_patch" hint="A JSON object merged over this inbound's generated config. null removes a key.">
-          <JsonField v-model="form.raw_patch" :rows="10" placeholder='{ "sniffing": { "metadataOnly": true } }' />
+        <FormField label="Inbound as JSON" name="form_json" hint="Everything the other tabs edit. Changes here show up there and the other way round. raw_patch is merged over the generated core config, and null there removes a key.">
+          <textarea class="textarea textarea-sm w-full font-mono text-xs leading-relaxed" :class="{ 'textarea-error': jsonError }" rows="24" spellcheck="false" :value="jsonText" @input="onJsonInput(($event.target as HTMLTextAreaElement).value)" />
+          <p v-if="jsonError" class="text-error mt-1 text-xs">{{ jsonError }}</p>
         </FormField>
         <div v-if="id" class="flex flex-col gap-1">
           <p class="fieldset-legend">{{ $t('Final config') }}</p>
@@ -198,7 +212,7 @@
 </template>
 
 <script setup lang="ts">
-import type { CommandResult, CoreInfo, Daemon, Guard, Inbound, Mux, PanelNode, Reality, Schema, SchemaField, TurnableRoute } from '~/types/api'
+import type { CommandResult, CoreInfo, Daemon, Fragment, Guard, Inbound, Mux, PanelNode, Reality, Schema, SchemaField, TurnableRoute } from '~/types/api'
 
 const props = defineProps<{ id: number | null }>()
 const emit = defineEmits<{ title: [m: { title: string, subtitle?: string, width?: string }], done: [] }>()
@@ -307,18 +321,28 @@ function limited(fields: SchemaField[] | undefined, allowed: string[] | undefine
   return (fields ?? []).map(f => (f.path === 'type' && f.options && allowed ? { ...f, options: f.options.filter(o => allowed.includes(o)) } : f))
 }
 
-const transportFields = computed(() => (['hysteria2', 'tuic', 'anytls', 'naive', 'shadowsocks', 'socks', 'http', 'mixed', 'mtproto', 'turnable'].includes(form.value?.protocol ?? '')
+// protocols whose builders read no transport block
+const ownTransport = ['hysteria2', 'tuic', 'anytls', 'naive', 'shadowsocks', 'socks', 'http', 'mixed', 'mtproto', 'turnable', 'wireguard', 'shadowtls']
+const transportFields = computed(() => (ownTransport.includes(form.value?.protocol ?? '')
   ? []
   : limited(schema.value?.transport, caps.value?.transports)))
+// protocols that never run inside TLS here: their links and builders have no place for it
+const secured = computed(() => !['shadowsocks', 'socks', 'mixed', 'wireguard', 'shadowtls', 'mtproto', 'turnable'].includes(form.value?.protocol ?? ''))
+// an HTTP proxy can sit behind TLS, but REALITY needs a protocol the client links carry
+const securities = computed(() => (form.value?.protocol === 'http' ? (caps.value?.securities ?? []).filter(s => s !== 'reality') : caps.value?.securities))
 const securityFields = computed(() => {
   const fixedTLS = tlsOnly(form.value?.protocol)
   const paths = certSource.value === 'files'
-  const fields = limited(schema.value?.security, caps.value?.securities)
+  const fields = limited(schema.value?.security, securities.value)
     .filter(f => !f.path.startsWith('reality') && (paths || !['cert_path', 'key_path'].includes(f.path)))
   return fixedTLS ? fields.filter(f => f.path !== 'type') : fields
 })
+// the naive daemon hands every connection to Caddy untouched, and these kinds have nothing to sniff
+const sniffable = computed(() => !['forward', 'mtproto', 'turnable'].includes(form.value?.protocol ?? '') && daemon.value?.kind !== 'naive')
 const optionFields = computed(() => (schema.value?.options ?? []).filter((f) => {
   if (f.path.startsWith('mux') || f.path.startsWith('fragment')) return false
+  // only the 2022 ciphers have a server key
+  if (f.path === 'server_key' && !String(form.value?.options.method ?? '').startsWith('2022-')) return false
   const need = f.show?.protocol
   const core = f.show?.core
   return (!need || need.includes(form.value?.protocol ?? '')) && (!core || core.includes(daemon.value?.kind ?? ''))
@@ -330,8 +354,13 @@ function tlsOnly(p: string | undefined) {
 }
 
 watch(() => form.value?.protocol, (p) => {
-  // TLS only protocols need tls from the start
-  if (form.value && tlsOnly(p) && form.value.security.type !== 'tls') form.value.security = { type: 'tls', cert_path: '/certs/fullchain.pem', key_path: '/certs/privkey.pem' }
+  const f = form.value
+  if (!f) return
+  // TLS only protocols need tls from the start, and the rest of the forms must not keep a layer they cannot show
+  if (tlsOnly(p) && f.security.type !== 'tls') f.security = { type: 'tls', cert_path: '/certs/fullchain.pem', key_path: '/certs/privkey.pem' }
+  else if (!secured.value && f.security.type !== 'none') f.security = { type: 'none' }
+  else if (p === 'http' && f.security.type === 'reality') f.security = { type: 'none' }
+  if (ownTransport.includes(p ?? '') && f.transport.type !== 'tcp') f.transport = { type: 'tcp' }
 })
 
 // an inbound saved before destinations became a list carries one flat destination, which becomes the first entry
@@ -380,7 +409,6 @@ async function newServerKeys() {
     : { ...f.options, t_private: k.private, t_public: k.public }
 }
 
-const routePlaceholders = ['host', 'port', 'user', 'uuid', 'password', 'name', 'node', 'country', 'route']
 const checkShortId = (v: string) => (/^([0-9a-f]{2}){0,8}$/i.test(v) ? undefined : 'Use up to 16 hex characters, an even number')
 
 const forward = computed(() => form.value!.forward ?? ({ address: '', port: 0, network: 'tcp' } as Record<string, unknown>))
@@ -451,17 +479,93 @@ const mux = computed(() => (form.value?.options.mux ?? null) as Mux | null)
 function setMux(patch: Partial<Mux>) {
   form.value!.options = { ...form.value!.options, mux: { enabled: false, ...mux.value, ...patch } }
 }
+const fragment = computed(() => (form.value?.options.fragment ?? null) as Fragment | null)
+function setFragment(patch: Partial<Fragment>) {
+  form.value!.options = { ...form.value!.options, fragment: { enabled: false, ...fragment.value, ...patch } }
+}
+// sing-mux and Mux.Cool only carry these
+const muxable = computed(() => ['vless', 'vmess', 'trojan', 'shadowsocks'].includes(form.value?.protocol ?? ''))
+// hello fragmentation needs TLS over TCP
+const fragmentable = computed(() => {
+  const f = form.value
+  if (!f) return false
+  if (['anytls', 'naive'].includes(f.protocol)) return true
+  return ['vless', 'vmess', 'trojan'].includes(f.protocol) && ['tls', 'reality'].includes(String(f.security.type)) && f.transport.type !== 'kcp'
+})
+
+// The Advanced tab edits the whole form as JSON. Text that parses replaces the form; the rest waits as an error.
+const jsonText = ref('')
+const jsonError = ref('')
+watch([tab, form], () => {
+  // broken text stays as typed, and text that already says the same thing is not reformatted under the cursor
+  if (tab.value !== 'advanced' || !form.value || jsonError.value || sameJson(jsonText.value, JSON.stringify(form.value))) return
+  jsonText.value = JSON.stringify(form.value, null, 2)
+}, { deep: true, immediate: true })
+// leaving the tab drops text that never parsed; the form keeps its last good state
+watch(tab, (t) => {
+  if (t !== 'advanced') jsonError.value = ''
+})
+
+function sameJson(text: string, current: string): boolean {
+  try {
+    return JSON.stringify(JSON.parse(text)) === current
+  }
+  catch {
+    return false
+  }
+}
+
+function onJsonInput(text: string) {
+  jsonText.value = text
+  let v: unknown
+  try {
+    v = JSON.parse(text)
+  }
+  catch (e) {
+    jsonError.value = (e as Error).message
+    return
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+    jsonError.value = 'The inbound must be a JSON object'
+    return
+  }
+  const next = v as Partial<Form>
+  for (const key of ['transport', 'security', 'options', 'sniffing'] as const) {
+    if (next[key] !== undefined && (typeof next[key] !== 'object' || next[key] === null || Array.isArray(next[key]))) {
+      jsonError.value = `${key} must be an object`
+      return
+    }
+  }
+  jsonError.value = ''
+  const cur = form.value!
+  form.value = {
+    daemon_id: next.daemon_id ?? cur.daemon_id, tag: next.tag ?? '', remark: next.remark ?? '', protocol: next.protocol ?? cur.protocol,
+    listen: next.listen ?? '', port: next.port ?? 0, enabled: next.enabled ?? false, sort: next.sort ?? 0,
+    transport: next.transport ?? {}, security: next.security ?? {}, options: next.options ?? {}, sniffing: next.sniffing ?? {},
+    forward: next.forward ?? null, raw_patch: next.raw_patch ?? null, edge_daemon_id: next.edge_daemon_id ?? null, edge_sni: next.edge_sni ?? [],
+  }
+}
 
 // Where each field lives, so an error on a hidden tab brings that tab forward.
 function tabOf(path: string): string {
   if (path.startsWith('transport.') || path.startsWith('security.')) return 'transport'
   if (path.startsWith('options.') || path.startsWith('sniffing.')) return 'protocol'
-  if (path === 'raw_patch') return 'advanced'
+  if (path === 'raw_patch' || path === 'form_json') return 'advanced'
   return 'general'
 }
 
 function rulesOf(f: Form): Record<string, string | undefined> {
   const e: Record<string, Check> = {}
+  e.form_json = jsonError.value ? 'Fix the JSON first' : undefined
+  const mx = f.options.mux as Mux | undefined
+  if (mx?.enabled && mx.concurrency) e['options.mux.concurrency'] = checkInt(mx.concurrency, 0, 1024)
+  const fr = f.options.fragment as Fragment | undefined
+  if (fr?.enabled) {
+    const range = (v: string | undefined) => (!v || /^\d+(-\d+)?$/.test(v) ? undefined : 'Use a number or a range like 10-20')
+    e['options.fragment.packets'] = !fr.packets || fr.packets === 'tlshello' ? undefined : range(fr.packets)
+    e['options.fragment.length'] = range(fr.length)
+    e['options.fragment.interval'] = range(fr.interval)
+  }
   e.tag = checkRequired(f.tag, 'Give it a tag') ?? (/\s/.test(f.tag) ? 'A tag can\'t contain spaces' : undefined)
   e.port = checkPort(f.port)
   if (f.listen) e.listen = checkIp(f.listen)
@@ -520,16 +624,16 @@ function rulesOf(f: Form): Record<string, string | undefined> {
         const at = (k: string) => `options.t_routes.${i}.${k}`
         e[at('id')] = !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(r.id) ? 'Use lowercase letters, digits, - and _, up to 32 characters'
           : routes.findIndex(x => x.id === r.id) !== i ? 'Another destination already uses this id' : undefined
+        e[at('name')] = checkPlaceholders(r.name, routeNamePlaceholders)
         const kind = r.kind || 'external'
         // a destination that leads to an inbound takes its address from it, the panel fills it in
         if (kind !== 'inbound') e[at('target')] = checkRequired(r.target, 'Where does it lead?') ?? checkHostPort(r.target, { ipOnly: true })
         if (r.socket === 'tcp' && r.transport === 'none') e[at('transport')] = 'TCP needs a transport other than none'
         if (kind === 'inbound' && !r.inbound_id) e[at('inbound_id')] = 'Pick the inbound this destination leads to'
         if (kind === 'custom') {
-          const bad = [...(r.url ?? '').matchAll(/\{(\w*)\}/g)].map(m => m[1]!).find(v => !routePlaceholders.includes(v))
           e[at('url')] = checkRequired(r.url, 'Write the link other apps should get')
             ?? (r.url!.includes('://') ? undefined : 'A link starts with a scheme, like vless://')
-            ?? (bad === undefined ? undefined : `Unknown placeholder {${bad}}`)
+            ?? checkPlaceholders(r.url, routeUrlPlaceholders)
         }
         if (kind !== 'external') {
           e[at('local_port')] = checkPort(r.local_port)

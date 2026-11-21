@@ -1,6 +1,7 @@
 package share
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -43,26 +44,44 @@ func ParseLink(raw string) (spec.Upstream, error) {
 		up.Protocol, up.UUID = spec.ProtoVLESS, u.User.Username()
 		up.Options.Flow = q.Get("flow")
 		readStream(&up, q)
+		up.Options.Mux = readMux(q)
 	case "trojan":
 		up.Protocol, up.Password = spec.ProtoTrojan, u.User.Username()
 		readStream(&up, q)
+		up.Options.Mux = readMux(q)
 	case "hysteria2", "hy2":
 		up.Protocol, up.Password = spec.ProtoHysteria2, u.User.Username()
 		if pass != "" {
 			up.Password += ":" + pass
 		}
-		up.Security = spec.Security{Type: spec.SecurityTLS, SNI: q.Get("sni"), Insecure: q.Get("insecure") == "1"}
+		up.Security = quicTLS(q)
 		up.Options.Obfs, up.Options.ObfsPass, up.Options.Ports = q.Get("obfs"), q.Get("obfs-password"), q.Get("mport")
+		up.Options.UpMbps, _ = strconv.Atoi(q.Get("upmbps"))
+		up.Options.DownMbps, _ = strconv.Atoi(q.Get("downmbps"))
 	case "tuic":
 		up.Protocol, up.UUID, up.Password = spec.ProtoTUIC, u.User.Username(), pass
-		up.Security = spec.Security{Type: spec.SecurityTLS, SNI: q.Get("sni"), Insecure: q.Get("allow_insecure") == "1"}
+		up.Security = quicTLS(q)
 		up.Options.CongestCtl = q.Get("congestion_control")
+		up.Options.ZeroRTT = isTrue(q.Get("zero_rtt_handshake"))
+		up.Options.Heartbeat = q.Get("heartbeat")
 	case "anytls":
 		up.Protocol, up.Password = spec.ProtoAnyTLS, u.User.Username()
-		up.Security = spec.Security{Type: spec.SecurityTLS, SNI: q.Get("sni"), Insecure: q.Get("insecure") == "1"}
+		up.Security = quicTLS(q)
+		up.Security.Fingerprint = q.Get("fp")
+		up.Options.Fragment = readFragment(q)
+	case "naive+https":
+		up.Protocol, up.Username, up.Password = spec.ProtoNaive, u.User.Username(), pass
+		up.Security = spec.Security{Type: spec.SecurityTLS, SNI: q.Get("sni")}
+		up.Options.Fragment = readFragment(q)
 	case "socks", "socks5":
 		up.Protocol = spec.ProtoSOCKS
 		up.Username, up.Password = decodeUserinfo(u.User.Username(), pass)
+	case "http", "https":
+		up.Protocol, up.Username, up.Password = spec.ProtoHTTP, u.User.Username(), pass
+		up.Security.Type = spec.SecurityNone
+		if scheme == "https" {
+			up.Security = spec.Security{Type: spec.SecurityTLS, SNI: q.Get("sni"), Insecure: isInsecure(q)}
+		}
 	default:
 		return spec.Upstream{}, fmt.Errorf("unsupported link scheme %q", scheme)
 	}
@@ -79,20 +98,104 @@ func readStream(up *spec.Upstream, q url.Values) {
 		typ = spec.TransportTCP
 	}
 	up.Transport = spec.Transport{
-		Type: typ, Path: q.Get("path"), Host: q.Get("host"), ServiceName: q.Get("serviceName"), Mode: q.Get("mode"), KCPSeed: q.Get("seed"),
+		Type: typ, Host: q.Get("host"), ServiceName: q.Get("serviceName"), Mode: q.Get("mode"), KCPSeed: q.Get("seed"),
+		Headers: readHeaders(q.Get("headers")),
 	}
-	up.Security = spec.Security{Type: q.Get("security"), SNI: q.Get("sni"), Fingerprint: q.Get("fp"), Insecure: q.Get("allowInsecure") == "1"}
+	up.Transport.Path, up.Transport.EarlyData = splitEarlyData(q.Get("path"))
+	if ed, err := strconv.Atoi(q.Get("ed")); err == nil && ed > 0 {
+		up.Transport.EarlyData = ed
+	}
+	up.Security = spec.Security{
+		Type: q.Get("security"), SNI: q.Get("sni"), Fingerprint: q.Get("fp"), Insecure: isInsecure(q), ECHConfig: q.Get("ech"),
+	}
 	if a := q.Get("alpn"); a != "" {
 		up.Security.ALPN = strings.Split(a, ",")
 	}
 	if up.Security.Type == "" {
 		up.Security.Type = spec.SecurityNone
 	}
+	up.Options.Fragment = readFragment(q)
 	if up.Security.Type == spec.SecurityReality {
 		up.Security.Reality = &spec.Reality{
 			ServerNames: []string{q.Get("sni")}, PublicKey: q.Get("pbk"), ShortIDs: []string{q.Get("sid")}, SpiderX: q.Get("spx"),
 		}
 	}
+}
+
+// quicTLS reads the TLS settings of a link that always runs over TLS.
+func quicTLS(q url.Values) spec.Security {
+	s := spec.Security{Type: spec.SecurityTLS, SNI: q.Get("sni"), Insecure: isInsecure(q), ECHConfig: q.Get("ech")}
+	if a := q.Get("alpn"); a != "" {
+		s.ALPN = strings.Split(a, ",")
+	}
+	return s
+}
+
+// isInsecure reads every name clients use for skipping the certificate check.
+func isInsecure(q url.Values) bool {
+	return isTrue(q.Get("allowInsecure")) || isTrue(q.Get("insecure")) || isTrue(q.Get("allow_insecure"))
+}
+
+func isTrue(v string) bool { return v == "1" || strings.EqualFold(v, "true") }
+
+// readMux reads the Throne (mux=true, mux_*) and Hiddify (muxtype, mux*) forms.
+func readMux(q url.Values) *spec.Mux {
+	proto := cmp.Or(q.Get("mux_protocol"), q.Get("muxtype"))
+	if !isTrue(q.Get("mux")) && q.Get("muxtype") == "" {
+		return nil
+	}
+	m := &spec.Mux{Enabled: true, Protocol: proto, Padding: isTrue(q.Get("mux_padding")) || isTrue(q.Get("muxpad"))}
+	m.Concurrency, _ = strconv.Atoi(cmp.Or(q.Get("mux_max_streams"), q.Get("muxsmax")))
+	return m
+}
+
+// readFragment reads Hiddify's fragment=packets,length,interval or Throne's bare tls_fragment=true.
+func readFragment(q url.Values) *spec.Frag {
+	if f := q.Get("fragment"); f != "" {
+		parts := strings.Split(f, ",")
+		if len(parts) == 3 {
+			return &spec.Frag{Enabled: true, Packets: parts[0], Length: parts[1], Interval: parts[2]}
+		}
+		return &spec.Frag{Enabled: true}
+	}
+	if isTrue(q.Get("tls_fragment")) {
+		return &spec.Frag{Enabled: true}
+	}
+	return nil
+}
+
+// readHeaders reads name|value|name|value.
+func readHeaders(v string) map[string]string {
+	parts := strings.Split(v, "|")
+	if v == "" || len(parts)%2 != 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for i := 0; i < len(parts); i += 2 {
+		out[parts[i]] = parts[i+1]
+	}
+	return out
+}
+
+// splitEarlyData takes ed=N off a websocket path.
+func splitEarlyData(path string) (string, int) {
+	base, query, ok := strings.Cut(path, "?")
+	if !ok {
+		return path, 0
+	}
+	q, err := url.ParseQuery(query)
+	if err != nil {
+		return path, 0
+	}
+	ed, err := strconv.Atoi(q.Get("ed"))
+	if err != nil {
+		return path, 0
+	}
+	q.Del("ed")
+	if len(q) > 0 {
+		base += "?" + q.Encode()
+	}
+	return base, ed
 }
 
 // parseVMess reads the base64 json vmess form.
@@ -117,16 +220,26 @@ func parseVMess(raw string) (spec.Upstream, error) {
 	if up.Transport.Type == "" {
 		up.Transport.Type = spec.TransportTCP
 	}
-	if up.Transport.Type == spec.TransportGRPC {
-		up.Transport.ServiceName = str("path")
-	} else {
-		up.Transport.Path = str("path")
+	up.Transport.Path = str("path")
+	switch up.Transport.Type {
+	case spec.TransportGRPC:
+		up.Transport.ServiceName, up.Transport.Path = up.Transport.Path, ""
+	case spec.TransportKCP:
+		up.Transport.KCPSeed, up.Transport.Path = up.Transport.Path, ""
+	default:
+		up.Transport.Path, up.Transport.EarlyData = splitEarlyData(up.Transport.Path)
 	}
 	if str("tls") == "tls" {
 		up.Security.Type = spec.SecurityTLS
 	}
+	up.Security.Insecure = isTrue(str("insecure"))
 	if a := str("alpn"); a != "" {
 		up.Security.ALPN = strings.Split(a, ",")
+	}
+	if extra, err := url.ParseQuery(str("throneExtra")); err == nil && len(extra) > 0 {
+		up.Transport.Headers = readHeaders(extra.Get("headers"))
+		up.Options.Mux = readMux(extra)
+		up.Options.Fragment = readFragment(extra)
 	}
 	return up, nil
 }
@@ -148,7 +261,7 @@ func parseSS(raw string) (spec.Upstream, error) {
 	if !ok {
 		return spec.Upstream{}, fmt.Errorf("ss link has no server")
 	}
-	hostport, _, _ = strings.Cut(hostport, "?")
+	hostport, rawQuery, _ := strings.Cut(hostport, "?")
 
 	if !strings.Contains(userinfo, ":") {
 		data, err := decodeB64(userinfo)
@@ -175,9 +288,10 @@ func parseSS(raw string) (spec.Upstream, error) {
 	if name == "" {
 		name = u.Hostname()
 	}
+	q, _ := url.ParseQuery(rawQuery)
 	return spec.Upstream{
 		Name: name, Protocol: spec.ProtoShadowsocks, Address: u.Hostname(), Port: port, Password: pass,
-		Options: spec.Options{Method: method},
+		Options: spec.Options{Method: method, Mux: readMux(q)},
 	}, nil
 }
 

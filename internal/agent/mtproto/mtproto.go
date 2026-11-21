@@ -131,50 +131,56 @@ func (r *Runtime) Apply(_ context.Context, d spec.Daemon, _ []byte) error {
 	defer r.mu.Unlock()
 	r.last = d
 
-	want := map[string]bool{}
-	var failed []error
+	type target struct{ addr, mode, domain string }
+	want := map[string]target{}
 	for _, in := range d.Inbounds {
 		if in.Protocol != spec.ProtoMTProto {
 			continue
 		}
-		want[in.Tag] = true
-		users := usersOf(in)
 		mode := in.Options.MTMode
 		if mode == "" {
 			mode = "faketls"
 		}
-		addr := net.JoinHostPort(in.Listen, strconv.Itoa(in.Port))
+		want[in.Tag] = target{net.JoinHostPort(in.Listen, strconv.Itoa(in.Port)), mode, in.Options.MTDomain}
+	}
+	// listeners that go away or change close before any opens, so a renamed or moved inbound can take their port
+	for tag, s := range r.servers {
+		if t, ok := want[tag]; !ok {
+			s.stop()
+			delete(r.servers, tag)
+			r.logf("stopped %s", s.addr)
+		} else if (target{s.addr, s.mode, s.domain}) != t {
+			s.stop()
+			delete(r.servers, tag)
+			r.kick(tag, nil)
+		}
+	}
 
-		if s, ok := r.servers[in.Tag]; ok && s.addr == addr && s.mode == mode && s.domain == in.Options.MTDomain {
+	var failed []error
+	for _, in := range d.Inbounds {
+		t, ok := want[in.Tag]
+		if !ok {
+			continue
+		}
+		users := usersOf(in)
+		if s, ok := r.servers[in.Tag]; ok {
 			s.users.Store(&users)
 			r.kick(in.Tag, users)
 			continue
 		}
-		if s, ok := r.servers[in.Tag]; ok {
-			s.stop()
-			r.kick(in.Tag, nil)
-		}
 		if r.onStart != nil {
 			r.onStart()
 		}
-		ln, err := net.Listen("tcp", addr)
+		ln, err := net.Listen("tcp", t.addr)
 		if err != nil {
-			failed = append(failed, fmt.Errorf("%s: %w", addr, err))
-			delete(r.servers, in.Tag)
+			failed = append(failed, fmt.Errorf("%s: %w", t.addr, err))
 			continue
 		}
-		s := &server{rt: r, tag: in.Tag, addr: addr, mode: mode, domain: in.Options.MTDomain, ln: ln}
+		s := &server{rt: r, tag: in.Tag, addr: t.addr, mode: t.mode, domain: t.domain, ln: ln}
 		s.users.Store(&users)
 		r.servers[in.Tag] = s
-		r.logf("listening on %s (%s)", addr, mode)
+		r.logf("listening on %s (%s)", t.addr, t.mode)
 		go s.accept()
-	}
-	for tag, s := range r.servers {
-		if !want[tag] {
-			s.stop()
-			delete(r.servers, tag)
-			r.logf("stopped %s", s.addr)
-		}
 	}
 	if len(failed) > 0 && len(r.servers) == 0 && r.onDown != nil {
 		r.onDown()

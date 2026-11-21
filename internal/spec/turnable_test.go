@@ -181,16 +181,3 @@ func TestRouteKindsAreValidated(t *testing.T) {
 		})
 	}
 }
-
-func TestRouteURLPlaceholders(t *testing.T) {
-	got := ExpandRouteURL("vless://{uuid}@{host}:{port}?x={password}#{name}", map[string]string{
-		"uuid": "u-1", "host": "127.0.0.1", "port": "10800", "password": "p w&d", "name": "Frankfurt ✓",
-	})
-	want := "vless://u-1@127.0.0.1:10800?x=p+w%26d#Frankfurt+%E2%9C%93"
-	if got != want {
-		t.Fatalf("got %q, want %q", got, want)
-	}
-	if ExpandRouteURL("a://{unknown}", nil) != "a://{unknown}" {
-		t.Fatal("an unknown placeholder is left as it is")
-	}
-}

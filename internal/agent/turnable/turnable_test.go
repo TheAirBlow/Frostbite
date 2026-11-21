@@ -240,3 +240,27 @@ func TestChangingARouteRestartsTheServer(t *testing.T) {
 		t.Fatal("the removed destination is still served")
 	}
 }
+
+func TestRenamedInboundStopsTheOldServerFirst(t *testing.T) {
+	r, started := harness(t)
+	start := r.start
+	r.start = func(in spec.Inbound, prov *providers.RawProvider, log *slog.Logger) (instance, error) {
+		for _, f := range *started {
+			if !f.stopped {
+				t.Fatal("a server started while another still held the port")
+			}
+		}
+		return start(in, prov, log)
+	}
+	d := inbound(t, user(1))
+	if err := r.Apply(context.Background(), d, nil); err != nil {
+		t.Fatal(err)
+	}
+	d.Inbounds[0].Tag = "t-renamed"
+	if err := r.Apply(context.Background(), d, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(*started) != 2 {
+		t.Fatalf("started %d servers, want 2", len(*started))
+	}
+}

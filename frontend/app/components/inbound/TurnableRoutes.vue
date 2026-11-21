@@ -51,10 +51,7 @@
         <FormField v-if="kindOf(r) === 'custom'" label="Link" :name="`options.t_routes.${i}.url`" required>
           <textarea v-model="r.url" class="textarea w-full font-mono text-xs" rows="3" spellcheck="false" placeholder="vless://{uuid}@{host}:{port}?type=tcp&security=none#{name}" />
         </FormField>
-        <p v-if="kindOf(r) === 'custom'" class="text-base-content/60 -mt-2 text-xs">
-          {{ $t('Placeholders:') }}
-          <code v-for="v in placeholders" :key="v" class="bg-base-300/60 mx-0.5 rounded px-1 font-mono">{{ braced(v) }}</code>.
-        </p>
+        <PlaceholderHelp v-if="kindOf(r) === 'custom'" class="-mt-2" :names="routeUrlPlaceholders" title="Link placeholders" />
 
         <FormField v-if="kindOf(r) !== 'external'" label="Port on the device" :name="`options.t_routes.${i}.local_port`" hint="Local port of the Turnable app." required>
           <input v-model.number="r.local_port" type="number" min="1" max="65535" class="input w-full" placeholder="10800">
@@ -66,8 +63,8 @@
           <FormField label="Id" :name="`options.t_routes.${i}.id`" hint="Apps refer to the destination by this. Lowercase letters, digits, - and _." required>
             <input :value="r.id" class="input w-full font-mono" placeholder="wg" autocomplete="off" @input="r.id = ($event.target as HTMLInputElement).value.toLowerCase()">
           </FormField>
-          <FormField label="Name" :name="`options.t_routes.${i}.name`" hint="Shown in the app. Empty uses the user's name.">
-            <input v-model="r.name" class="input w-full">
+          <FormField label="Name" :name="`options.t_routes.${i}.name`" hint="Shown in the app. Placeholders work here, empty means {remark}.">
+            <input v-model="r.name" class="input w-full" placeholder="{remark}">
           </FormField>
           <FormField label="Transport" :name="`options.t_routes.${i}.transport`" hint="How packets are carried inside the tunnel.">
             <select v-model="r.transport" class="select w-full">
@@ -84,6 +81,7 @@
             </select>
           </FormField>
         </div>
+        <PlaceholderHelp :names="routeNamePlaceholders" title="Name placeholders" />
       </Advanced>
     </article>
   </section>
@@ -99,7 +97,6 @@ const props = defineProps<{ nodeId?: number }>()
 const model = defineModel<TurnableRoute[]>({ required: true })
 const ctx = inject(formKey, null)
 
-const placeholders = ['host', 'port', 'user', 'uuid', 'password', 'name', 'node', 'country', 'route']
 const { data: nodes } = useAsyncData('nodes', () => useApi<PanelNode[]>('/nodes'))
 const { data: inbounds } = useAsyncData('inbounds', () => useApi<Inbound[]>('/inbounds'))
 
@@ -110,7 +107,6 @@ const candidates = computed(() => {
 })
 
 const kindOf = (r: TurnableRoute): Kind => r.kind || 'external'
-const braced = (v: string) => `{${v}}`
 
 function nextPort(): number {
   const used = new Set(model.value.map(r => r.local_port))

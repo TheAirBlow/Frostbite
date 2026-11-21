@@ -99,3 +99,17 @@ func TestWireGuardBecomesAnEndpointWithOnePeerPerUser(t *testing.T) {
 		t.Fatalf("server address wrong: %v", ep["address"])
 	}
 }
+
+func TestServerMultiplexOnlyWhereSingBoxHasIt(t *testing.T) {
+	mux := &spec.Mux{Enabled: true}
+	for proto, want := range map[string]bool{spec.ProtoTrojan: true, spec.ProtoHysteria2: false, spec.ProtoTUIC: false, spec.ProtoNaive: false} {
+		in := spec.Inbound{Tag: "t", Protocol: proto, Port: 443, Security: spec.Security{Type: spec.SecurityTLS}, Options: spec.Options{Mux: mux}}
+		m, err := Inbound(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, got := m["multiplex"]; got != want {
+			t.Errorf("%s: multiplex %v, want %v", proto, got, want)
+		}
+	}
+}

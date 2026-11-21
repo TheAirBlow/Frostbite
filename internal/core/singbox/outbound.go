@@ -93,6 +93,7 @@ func OutboundFor(u spec.Upstream, tag string) (map[string]any, error) {
 		m["type"], m["uuid"], m["password"] = "tuic", u.UUID, u.Password
 		m["congestion_control"] = u.Options.CongestCtl
 		m["zero_rtt_handshake"] = u.Options.ZeroRTT
+		m["heartbeat"] = u.Options.Heartbeat
 	case spec.ProtoAnyTLS:
 		m["type"], m["password"] = "anytls", u.Password
 	case spec.ProtoSOCKS, spec.ProtoMixed:
@@ -114,12 +115,12 @@ func OutboundFor(u spec.Upstream, tag string) (map[string]any, error) {
 	if tls := clientTLS(u); tls != nil {
 		m["tls"] = tls
 	}
-	if mux := u.Options.Mux; mux != nil && mux.Enabled {
+	if mux := u.Options.Mux; mux != nil && mux.Enabled && muxable(u.Protocol) {
 		proto := mux.Protocol
 		if proto == "" {
 			proto = "h2mux"
 		}
-		m["multiplex"] = map[string]any{"enabled": true, "protocol": proto, "padding": mux.Padding}
+		m["multiplex"] = map[string]any{"enabled": true, "protocol": proto, "padding": mux.Padding, "max_streams": mux.Concurrency}
 	}
 	return m, nil
 }
@@ -157,7 +158,25 @@ func clientTLS(u spec.Upstream) map[string]any {
 	if s.ECHConfig != "" {
 		m["ech"] = map[string]any{"enabled": true, "config": []string{s.ECHConfig}}
 	}
+	// sing-box splits the hello on its own, it has no knobs for packets, length or interval
+	if f := u.Options.Fragment; f != nil && f.Enabled && overTCP(u.Protocol) {
+		m["fragment"] = true
+	}
 	return m
+}
+
+// muxable reports whether sing-box can multiplex the protocol.
+func muxable(proto string) bool {
+	switch proto {
+	case spec.ProtoVLESS, spec.ProtoVMess, spec.ProtoTrojan, spec.ProtoShadowsocks:
+		return true
+	}
+	return false
+}
+
+// overTCP reports whether the protocol's TLS runs over TCP, which is what hello fragmentation needs.
+func overTCP(proto string) bool {
+	return proto != spec.ProtoHysteria2 && proto != spec.ProtoTUIC
 }
 
 // splitHostPort parses host:port into the pieces sing-box wants.

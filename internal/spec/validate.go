@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"regexp"
 	"strings"
 )
 
@@ -34,6 +35,9 @@ func (d *Daemon) Validate() error {
 			return err
 		}
 		if err := in.validateGuard(); err != nil {
+			return err
+		}
+		if err := in.Options.validateClientKnobs(); err != nil {
 			return err
 		}
 		if in.Protocol == ProtoNaive && d.Kind == "naive" {
@@ -222,4 +226,31 @@ func reality(r *Reality) error {
 	default:
 		return Invalid("security.reality.private_key", "reality needs a private key")
 	}
+}
+
+var rangeText = regexp.MustCompile(`^\d+(-\d+)?$`)
+
+// validateClientKnobs checks the multiplexing and fragmentation clients are told to use.
+func (o Options) validateClientKnobs() error {
+	if m := o.Mux; m != nil && m.Enabled {
+		switch m.Protocol {
+		case "", "h2mux", "smux", "yamux":
+		default:
+			return Invalid("options.mux.protocol", "unknown mux protocol %q, use h2mux, smux or yamux", m.Protocol)
+		}
+		if m.Concurrency < 0 || m.Concurrency > 1024 {
+			return Invalid("options.mux.concurrency", "streams per connection must be between 0 and 1024")
+		}
+	}
+	if f := o.Fragment; f != nil && f.Enabled {
+		if f.Packets != "" && f.Packets != "tlshello" && !rangeText.MatchString(f.Packets) {
+			return Invalid("options.fragment.packets", "use tlshello or a range of writes like 1-3")
+		}
+		for field, v := range map[string]string{"options.fragment.length": f.Length, "options.fragment.interval": f.Interval} {
+			if v != "" && !rangeText.MatchString(v) {
+				return Invalid(field, "use a number or a range like 10-20")
+			}
+		}
+	}
+	return nil
 }

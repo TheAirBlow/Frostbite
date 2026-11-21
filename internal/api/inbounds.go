@@ -15,6 +15,7 @@ import (
 	"frostbite/internal/compose"
 	"frostbite/internal/core"
 	"frostbite/internal/db"
+	"frostbite/internal/share"
 	"frostbite/internal/spec"
 )
 
@@ -253,7 +254,7 @@ func (s *Server) defaultHosts(ctx context.Context, in db.Inbound) []db.Host {
 		return []db.Host{}
 	}
 	h, err := s.Queries.CreateHost(ctx, db.CreateHostParams{
-		InboundID: in.ID, Remark: "{node} {protocol}", Alpn: []string{}, Enabled: true,
+		InboundID: in.ID, Remark: share.DefaultRemark, Alpn: []string{}, Enabled: true,
 	})
 	if err != nil {
 		return []db.Host{}
@@ -373,7 +374,10 @@ func (h *hostRequest) clean() error {
 		return spec.Invalid("port", "port must be between 1 and 65535")
 	}
 	if h.Remark == "" {
-		h.Remark = "{node} {protocol}"
+		h.Remark = share.DefaultRemark
+	}
+	if err := spec.CheckPlaceholders(h.Remark, spec.RemarkPlaceholders); err != nil {
+		return spec.Invalid("remark", "%s", err)
 	}
 	if f := h.Fragment; f != nil && f.Enabled {
 		for field, v := range map[string]string{"fragment.length": f.Length, "fragment.interval": f.Interval} {

@@ -77,6 +77,35 @@ func TestOrdinaryAppsGetConnectionsToTheLocalPort(t *testing.T) {
 	if !strings.HasPrefix(hand.RawLink, "socks://alice:") || !strings.Contains(hand.RawLink, "@127.0.0.1:10801#") {
 		t.Fatalf("placeholders were not filled in: %q", hand.RawLink)
 	}
+	if hand.Name != "Frankfurt turnable" {
+		t.Fatalf("a destination without a name takes the tunnel's remark, got %q", hand.Name)
+	}
+}
+
+func TestRouteNamesFillPlaceholders(t *testing.T) {
+	topo, u := turnableTopology(t)
+	in := topo.Inbounds[101]
+	in.Options.TRoutes[0].Name = "{flag} {country_name:ru} {route} {user}"
+	topo.Inbounds[101] = in
+
+	for _, p := range topo.Profiles(u, []int64{1}, ModeStandard) {
+		if p.Via == "turnable-local" && p.Port == 10800 {
+			if p.Name != "🇩🇪 Германия vpn alice" {
+				t.Fatalf("got %q", p.Name)
+			}
+			return
+		}
+	}
+	t.Fatal("no local connection for the inbound route")
+}
+
+func TestTurnableLinkCarriesRouteNames(t *testing.T) {
+	topo, u := turnableTopology(t)
+	got := topo.Profiles(u, []int64{1}, ModeTurnable)
+	routes := got[0].Options.TRoutes
+	if routes[0].Name != "Via tunnel" || routes[1].Name != "Frankfurt turnable" {
+		t.Fatalf("got %q and %q", routes[0].Name, routes[1].Name)
+	}
 }
 
 func TestTurnableAppsGetOnlyTheTunnel(t *testing.T) {

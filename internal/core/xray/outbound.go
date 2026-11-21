@@ -1,6 +1,7 @@
 package xray
 
 import (
+	"cmp"
 	"fmt"
 
 	"frostbite/internal/spec"
@@ -101,7 +102,7 @@ func OutboundFor(u spec.Upstream, tag string) (map[string]any, error) {
 	}
 	m["streamSettings"] = streamSettings(u.Transport, u.Security, false)
 	if u.Options.Mux != nil && u.Options.Mux.Enabled {
-		m["mux"] = map[string]any{"enabled": true, "concurrency": max(u.Options.Mux.Concurrency, 8)}
+		m["mux"] = map[string]any{"enabled": true, "concurrency": cmp.Or(u.Options.Mux.Concurrency, 8)}
 	}
 	return m, nil
 }

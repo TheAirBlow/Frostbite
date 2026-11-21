@@ -19,7 +19,8 @@
           <div v-if="$slots.tabs" class="border-base-300 shrink-0 overflow-x-auto border-b px-4">
             <slot name="tabs" />
           </div>
-          <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+          <!-- the content fills the height, so a FormFooter sits at the bottom even when the form is short -->
+          <div class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-4 *:shrink-0 *:grow">
             <slot />
           </div>
           <footer v-if="$slots.footer" class="border-base-300 bg-base-100 shrink-0 border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

@@ -52,6 +52,29 @@ The dashboard is generated: edit `docker/grafana/build_dashboard.py` and run it 
 - **Alerts:** Telegram (admin alerts, user alerts and a bot with commands) and signed webhooks.
 - **Backups:** download, restore and scheduled, in one json file.
 
+## Remark placeholders
+Host remarks, Turnable destination names and custom destination links are templates. Each `{name}` is replaced when a subscription is built. An unknown placeholder is left as written, and the panel refuses to save one it doesn't know.
+
+| Placeholder | Value | Remarks | Destination names | Destination links |
+|---|---|:-:|:-:|:-:|
+| `{node}` | Node name | ✓ | ✓ | ✓ |
+| `{country}` | Two letter country code of the node, like `SE` | ✓ | ✓ | ✓ |
+| `{flag}` | Flag of the node's country, like 🇸🇪 | ✓ | ✓ | ✓ |
+| `{country_name}` | Country name in English, like `Sweden` | ✓ | ✓ | ✓ |
+| `{country_name:ru}` | Country name in any language, by its code: `ru`, `zh`, `fa`, `pt-BR` and so on | ✓ | ✓ | ✓ |
+| `{inbound}` | Inbound tag | ✓ | ✓ | ✓ |
+| `{protocol}` | Protocol, like `vless` | ✓ | ✓ | ✓ |
+| `{transport}` | Transport, like `ws` | ✓ | ✓ | ✓ |
+| `{security}` | `tls`, `reality` or `none` | ✓ | ✓ | ✓ |
+| `{user}` | Username | ✓ | ✓ | ✓ |
+| `{host}`, `{port}` | Address and port the app connects to. In destination links, the Turnable app's local port on `127.0.0.1` | ✓ | ✓ | ✓ |
+| `{remark}` | Remark of the Turnable inbound's host, with its placeholders filled in |  | ✓ | ✓ |
+| `{route}` | Destination id |  | ✓ | ✓ |
+| `{uuid}`, `{password}` | The user's credentials on the Turnable inbound |  |  | ✓ |
+| `{name}` | Destination name, with its placeholders filled in |  |  | ✓ |
+
+Every placeholder except `{flag}` and `{country_name}` accepts `:upper` or `:lower`, like `{protocol:upper}`. An empty remark means `{node} {protocol}`, and an empty destination name means `{remark}`. In destination names, placeholders describe the Turnable inbound, not the inbound the destination leads to. In links, every value except `{host}` and `{port}` is URL-escaped.
+
 ## Layout
 ```
 cmd/panel, cmd/agent-xray, cmd/agent-singbox, cmd/agent-mtproto, cmd/agent-turnable, cmd/agent-naive, cmd/agent-trojan

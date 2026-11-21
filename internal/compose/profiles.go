@@ -93,13 +93,13 @@ func (t *Topology) Profiles(u db.User, squadIDs []int64, mode ProfileMode) []Pro
 		user := UserFor(si, u)
 		hosts := t.Hosts[id]
 		if len(hosts) == 0 {
-			hosts = []db.Host{{ID: 0, InboundID: id, Remark: "{node} {protocol}", Enabled: true}}
+			hosts = []db.Host{{ID: 0, InboundID: id, Remark: share.DefaultRemark, Enabled: true}}
 		}
 		for _, h := range hosts {
 			if !h.Enabled {
 				continue
 			}
-			ep := share.Endpoint{Inbound: si, Host: HostOf(h), NodeAddress: node.Address, NodeName: node.Name, Country: node.Country}
+			ep := share.Endpoint{Inbound: si, Host: HostOf(h), NodeAddress: node.Address, NodeName: node.Name, Country: node.Country, Username: u.Username}
 			up, err := share.Upstream(ep, user)
 			if err != nil {
 				continue
@@ -110,6 +110,9 @@ func (t *Topology) Profiles(u db.User, squadIDs []int64, mode ProfileMode) []Pro
 					continue
 				}
 				up.Inner = &inner
+			}
+			if isTurnable {
+				up.Options.TRoutes = namedRoutes(si, ep, user)
 			}
 			p := Profile{
 				Upstream: up, NodeID: node.ID, NodeName: node.Name, InboundID: id, HostID: h.ID, Country: node.Country,
@@ -131,7 +134,7 @@ func (t *Topology) detourOf(in db.Inbound, u db.User, outer share.Endpoint) (spe
 			continue
 		}
 		si := specInbound(o)
-		ep := share.Endpoint{Inbound: si, Host: outer.Host, NodeAddress: outer.NodeAddress, NodeName: outer.NodeName}
+		ep := share.Endpoint{Inbound: si, Host: outer.Host, NodeAddress: outer.NodeAddress, NodeName: outer.NodeName, Country: outer.Country, Username: outer.Username}
 		ep.Host.Port, ep.Host.Path, ep.Host.Host = outer.Host.Port, "", ""
 		inner, err := share.Upstream(ep, UserFor(si, u))
 		if err != nil {
@@ -182,8 +185,10 @@ func (t *Topology) ResolveRoutes(o spec.Options) spec.Options {
 // localProfiles are the connections ordinary apps get for the destinations of a Turnable inbound: ones that point at
 // the port the Turnable app listens on, in whatever form the thing behind the tunnel needs.
 func (t *Topology) localProfiles(in db.Inbound, si spec.Inbound, node db.Node, u db.User, allowed map[int64]bool) []Profile {
+	ep := share.Endpoint{Inbound: si, Host: hostFor(t.Hosts[in.ID]), NodeAddress: node.Address, NodeName: node.Name, Country: node.Country, Username: u.Username}
+	user := UserFor(si, u)
 	var out []Profile
-	for _, r := range si.Options.TurnableRoutes() {
+	for _, r := range namedRoutes(si, ep, user) {
 		if !r.IsLocal() {
 			continue
 		}
@@ -195,7 +200,7 @@ func (t *Topology) localProfiles(in db.Inbound, si spec.Inbound, node db.Node, u
 		case spec.RouteInbound:
 			up, ok = t.localInbound(r, node, u, allowed)
 		case spec.RouteCustom:
-			up, ok = localCustom(r, si, node, u)
+			up, ok = localCustom(r, routePlaceholders(ep, user, r), user)
 		}
 		if ok {
 			out = append(out, Profile{Upstream: up, NodeID: node.ID, NodeName: node.Name, InboundID: in.ID, Country: node.Country, Via: "turnable-local"})
@@ -215,10 +220,6 @@ func (t *Topology) localInbound(r spec.TurnableRouteSpec, node db.Node, u db.Use
 	tsi := specInbound(target)
 	host := hostFor(t.Hosts[target.ID])
 	host.Address, host.Port = "127.0.0.1", r.LocalPort
-	host.Remark = r.Name
-	if host.Remark == "" {
-		host.Remark = "{node} " + firstNonEmpty(target.Remark, target.Tag)
-	}
 
 	// The app talks to localhost, but the server still has to be addressed by its own name.
 	name := firstNonEmpty(host.SNI, tsi.Security.SNI, acmeDomain(tsi.Security))
@@ -235,28 +236,48 @@ func (t *Topology) localInbound(r spec.TurnableRouteSpec, node db.Node, u db.Use
 		}
 	}
 
-	up, err := share.Upstream(share.Endpoint{Inbound: tsi, Host: host, NodeAddress: "127.0.0.1", NodeName: node.Name, Country: node.Country}, UserFor(tsi, u))
+	up, err := share.Upstream(share.Endpoint{Inbound: tsi, Host: host, NodeAddress: "127.0.0.1", NodeName: node.Name, Country: node.Country, Username: u.Username}, UserFor(tsi, u))
+	up.Name = r.Name
 	return up, err == nil
 }
 
 // localCustom renders a link written by hand for a destination.
-func localCustom(r spec.TurnableRouteSpec, si spec.Inbound, node db.Node, u db.User) (spec.Upstream, bool) {
-	cred := UserFor(si, u)
-	name := r.Name
-	if name == "" {
-		name = node.Name + " " + r.ID
-	}
-	link := spec.ExpandRouteURL(r.URL, map[string]string{
-		"host": "127.0.0.1", "port": strconv.Itoa(r.LocalPort), "user": u.Username, "uuid": cred.UUID, "password": cred.Password,
-		"name": name, "node": node.Name, "country": node.Country, "route": r.ID,
-	})
+func localCustom(r spec.TurnableRouteSpec, vars spec.Placeholders, cred spec.User) (spec.Upstream, bool) {
+	vars["host"], vars["port"] = "127.0.0.1", strconv.Itoa(r.LocalPort)
+	vars["uuid"], vars["password"], vars["name"] = cred.UUID, cred.Password, r.Name
+	link := vars.ExpandURL(r.URL)
 	// A link the panel understands can be drawn in every format. Any other is handed over as it is.
 	up, err := share.ParseLink(link)
 	if err != nil {
 		up = spec.Upstream{Protocol: "custom", Address: "127.0.0.1", Port: r.LocalPort}
 	}
-	up.RawLink, up.Name = link, name
+	up.RawLink, up.Name = link, r.Name
 	return up, true
+}
+
+// namedRoutes lists the destinations of a Turnable inbound with their name templates filled in, as seen through
+// one of its hosts.
+func namedRoutes(si spec.Inbound, ep share.Endpoint, user spec.User) []spec.TurnableRouteSpec {
+	routes := si.Options.TurnableRoutes()
+	for i, r := range routes {
+		tpl := r.Name
+		if tpl == "" {
+			tpl = DefaultRouteName
+		}
+		routes[i].Name = routePlaceholders(ep, user, r).Expand(tpl)
+	}
+	return routes
+}
+
+// DefaultRouteName is the name of a Turnable destination that has none: the remark of the tunnel's host.
+const DefaultRouteName = "{remark}"
+
+// routePlaceholders are the values the name and link of a destination can refer to. See spec.RouteNamePlaceholders.
+func routePlaceholders(ep share.Endpoint, user spec.User, r spec.TurnableRouteSpec) spec.Placeholders {
+	p := share.Placeholders(ep, user)
+	p["remark"] = share.Remark(ep, user)
+	p["route"] = r.ID
+	return p
 }
 
 func firstNonEmpty(vals ...string) string {

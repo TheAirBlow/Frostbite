@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"net/url"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -29,9 +27,9 @@ const (
 // user may use all of them, the client picks one by its id.
 type TurnableRouteSpec struct {
 	ID         string `json:"id"`
-	Name       string `json:"name,omitempty"`
-	Target     string `json:"target"` // ip:port, filled in from the inbound for the "inbound" kind
-	Socket     string `json:"socket"` // tcp or udp
+	Name       string `json:"name,omitempty"` // a template, see RouteNamePlaceholders; empty means {remark}
+	Target     string `json:"target"`         // ip:port, filled in from the inbound for the "inbound" kind
+	Socket     string `json:"socket"`         // tcp or udp
 	Transport  string `json:"transport,omitempty"`
 	Encryption string `json:"encryption,omitempty"`
 
@@ -48,11 +46,6 @@ const (
 	RouteInbound  = "inbound"  // the link of one of the panel's own inbounds
 	RouteCustom   = "custom"   // a link written by hand
 )
-
-// RouteURLVars are the placeholders a custom link may use.
-var RouteURLVars = []string{"host", "port", "user", "uuid", "password", "name", "node", "country", "route"}
-
-var routePlaceholder = regexp.MustCompile(`\{(\w*)\}`)
 
 // IsLocal reports whether apps other than Turnable are given a link for the route.
 func (r TurnableRouteSpec) IsLocal() bool { return r.Kind == RouteInbound || r.Kind == RouteCustom }
@@ -165,6 +158,9 @@ func (o Options) validateTurnableRoutes() error {
 			return Invalid(at("id"), "another destination already uses the id %q", r.ID)
 		}
 		seen[r.ID] = true
+		if err := CheckPlaceholders(r.Name, RouteNamePlaceholders); err != nil {
+			return Invalid(at("name"), "%s", err)
+		}
 		if _, _, err := r.Split(); err != nil {
 			return Invalid(at("target"), "%s", err)
 		}
@@ -231,10 +227,8 @@ func (r TurnableRouteSpec) validateKind(at func(string) string) error {
 		if !strings.Contains(r.URL, "://") {
 			return Invalid(at("url"), "a link starts with a scheme, like vless://")
 		}
-		for _, m := range routePlaceholder.FindAllStringSubmatch(r.URL, -1) {
-			if !slices.Contains(RouteURLVars, m[1]) {
-				return Invalid(at("url"), "unknown placeholder {%s}, use one of: {%s}", m[1], strings.Join(RouteURLVars, "}, {"))
-			}
+		if err := CheckPlaceholders(r.URL, RouteURLVars); err != nil {
+			return Invalid(at("url"), "%s", err)
 		}
 	default:
 		return Invalid(at("kind"), "unknown kind %q", r.Kind)
@@ -243,19 +237,4 @@ func (r TurnableRouteSpec) validateKind(at func(string) string) error {
 		return Invalid(at("local_port"), "pick the port the Turnable app listens on, from 1 to 65535")
 	}
 	return nil
-}
-
-// ExpandRouteURL fills the placeholders of a custom link. Everything except host and port is escaped for a URL.
-func ExpandRouteURL(tpl string, vars map[string]string) string {
-	return routePlaceholder.ReplaceAllStringFunc(tpl, func(m string) string {
-		key := m[1 : len(m)-1]
-		v, ok := vars[key]
-		if !ok {
-			return m
-		}
-		if key == "host" || key == "port" {
-			return v
-		}
-		return url.QueryEscape(v)
-	})
 }

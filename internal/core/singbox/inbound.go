@@ -93,7 +93,7 @@ func Inbound(in spec.Inbound) (map[string]any, error) {
 		if tls := serverTLS(in); tls != nil {
 			m["tls"] = tls
 		}
-		if mux := in.Options.Mux; mux != nil && mux.Enabled {
+		if mux := in.Options.Mux; mux != nil && mux.Enabled && muxable(in.Protocol) {
 			m["multiplex"] = map[string]any{"enabled": true}
 		}
 	}
