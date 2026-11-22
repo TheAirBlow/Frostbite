@@ -681,8 +681,8 @@ github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 h1:U
 github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976/go.mod h1:agQPE6y6ldqCOui2gkIh7ZMztTkIQKH049tv8siLuNQ=
 github.com/tc-hib/winres v0.2.1 h1:YDE0FiP0VmtRaDn7+aaChp1KiF4owBiJa5l964l5ujA=
 github.com/tc-hib/winres v0.2.1/go.mod h1:C/JaNhH3KBvhNKVbvdlDWkbMDO9H4fKKDaN7/07SSuk=
-github.com/theairblow/turnable v0.8.2 h1:wYcaWA3ySxkX0JeR6JyZ/0+R9D86g2aJLSV78zv7qE4=
-github.com/theairblow/turnable v0.8.2/go.mod h1:Df+UAiGjHZK2HWjFPaEzs7Cj3rpdw+DVM8ZqDdlX/sA=
+github.com/theairblow/turnable v0.8.7 h1:k3dNN7f0007tI18GJ9axPODP5Jpfz6ytxiPnQoE6Evg=
+github.com/theairblow/turnable v0.8.7/go.mod h1:Df+UAiGjHZK2HWjFPaEzs7Cj3rpdw+DVM8ZqDdlX/sA=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
 github.com/tidwall/gjson v1.18.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
